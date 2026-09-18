@@ -195,7 +195,7 @@ const rightLegRig = buildLeg('right');
 
 const swordRoot = new THREE.Group();
 swordRoot.position.set(.02, -.18, .01);
-rightArmRig.hand.add(swordRoot);
+rightArmRig.hand.add(swordRoot); // 장검은 오른손 고정
 mesh(new THREE.CylinderGeometry(.045, .045, .28, 8), leatherMat, swordRoot, [0, -.12, 0]);
 mesh(new THREE.BoxGeometry(.46, .055, .09), darkMetalMat, swordRoot, [0, -.29, 0]);
 mesh(new THREE.BoxGeometry(.085, 1.45, .12), metalMat, swordRoot, [0, -1.02, 0]);
@@ -618,29 +618,49 @@ function attackPose(index, p) {
   let w, h;
 
   if (index === 0) {
-    // 1타: 오른쪽 어깨 뒤에서 준비 -> 몸을 풀며 왼쪽 아래로 대각 베기.
-    // 관절 각도는 과하게 꺾지 않고, 팔꿈치가 자연스럽게 펴지게 한다.
+    // 1타(오른손 장검):
+    // 준비: 오른손 검을 몸을 가로질러 왼쪽 어깨 위로 넘기고,
+    // 오른팔 팔꿈치를 접으며 골반/허리를 살짝 왼쪽으로 튼다.
+    // 타격: 허리를 아주 살짝 오른쪽으로 되돌리며 오른팔 팔꿈치를 펴서
+    // 왼쪽 위 -> 오른쪽 아래 대각선으로 베고, 검끝은 오른쪽 아래에서 멈춘다.
+    // 종료 시 오른쪽 어깨는 몸 중심보다 아주 미세하게 앞쪽에 남긴다.
     w = {
-      hipY: -.18, torsoX: -.03, torsoY: -.34, torsoZ: -.07,
-      rSX: -.34, rSY: -.28, rSZ: -1.05,
-      rEX: -.92, rEY: .04, rEZ: -.08,
-      rWX: .06, rWY: -.10, rWZ: -.22,
-      lSX: .26, lSY: .06, lSZ: .18,
-      lEX: -.32, lEY: 0, lEZ: .06,
-      lWX: 0, lWY: 0, lWZ: .04,
-      lTX: -.10, rTX: .07, lKX: .14, rKX: .06, lAX: -.04, rAX: .02,
-      headX: -.01, headY: .07
+      hipY: .18, torsoX: -.03, torsoY: .30, torsoZ: .05,
+
+      // 오른손/오른팔이 가슴 앞을 지나 왼쪽 어깨 위로 올라감
+      rSX: -.38, rSY: .34, rSZ: -1.12,
+      rEX: -1.02, rEY: -.03, rEZ: .08,
+      rWX: .05, rWY: .12, rWZ: .18,
+
+      // 왼팔은 과하게 움직이지 않고 균형만 잡음
+      lSX: .18, lSY: -.03, lSZ: .12,
+      lEX: -.24, lEY: 0, lEZ: -.03,
+      lWX: 0, lWY: 0, lWZ: -.02,
+
+      lTX: .05, rTX: -.08,
+      lKX: .06, rKX: .12,
+      lAX: .02, rAX: -.04,
+
+      headX: -.01, headY: -.06
     };
     h = {
-      hipY: .16, torsoX: .08, torsoY: .42, torsoZ: .08,
-      rSX: -.68, rSY: .44, rSZ: -.34,
-      rEX: -.16, rEY: -.02, rEZ: .07,
-      rWX: -.04, rWY: .10, rWZ: .20,
-      lSX: -.08, lSY: -.08, lSZ: .10,
-      lEX: -.20, lEY: 0, lEZ: -.04,
-      lWX: 0, lWY: 0, lWZ: -.03,
-      lTX: .05, rTX: -.10, lKX: .04, rKX: .12, lAX: .03, rAX: -.04,
-      headX: .02, headY: -.08
+      hipY: -.08, torsoX: .07, torsoY: -.14, torsoZ: -.03,
+
+      // 팔꿈치를 펴며 오른쪽 아래까지 베기.
+      // torsoY를 살짝 음수로 남겨 오른쪽 어깨가 미세하게 전방에 남도록 함.
+      rSX: -.62, rSY: -.28, rSZ: -.50,
+      rEX: -.12, rEY: .02, rEZ: -.04,
+      rWX: -.03, rWY: -.08, rWZ: -.14,
+
+      lSX: .02, lSY: .03, lSZ: .08,
+      lEX: -.18, lEY: 0, lEZ: .02,
+      lWX: 0, lWY: 0, lWZ: .01,
+
+      lTX: -.04, rTX: .06,
+      lKX: .10, rKX: .04,
+      lAX: -.03, rAX: .02,
+
+      headX: .01, headY: .04
     };
   } else if (index === 1) {
     // 2타: 1타가 끝난 낮은 위치에서 반대 방향으로 올려베기.
