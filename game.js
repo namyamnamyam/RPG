@@ -285,6 +285,25 @@ function updateBowVisual(draw = 0) {
   bowString.geometry.attributes.position.needsUpdate = true;
 }
 
+// 세 번째 장비: 기본 지팡이.
+const staffRoot = new THREE.Group();
+staffRoot.position.set(.02, -.14, .02);
+rightArmRig.hand.add(staffRoot);
+
+const staffWoodMat = new THREE.MeshStandardMaterial({ color: 0x65452e, roughness: .82 });
+const staffBandMat = new THREE.MeshStandardMaterial({ color: 0x7f8790, metalness: .55, roughness: .34 });
+const staffOrbMat = new THREE.MeshStandardMaterial({
+  color: 0xff7a2a,
+  emissive: 0xff3b00,
+  emissiveIntensity: 1.6,
+  roughness: .34
+});
+mesh(new THREE.CylinderGeometry(.055, .065, 1.72, 9), staffWoodMat, staffRoot, [0, -.82, 0]);
+mesh(new THREE.CylinderGeometry(.085, .085, .14, 9), staffBandMat, staffRoot, [0, -1.55, 0]);
+mesh(new THREE.SphereGeometry(.16, 12, 9), staffOrbMat, staffRoot, [0, -1.72, 0]);
+staffRoot.rotation.z = .03;
+staffRoot.visible = false;
+
 let equippedWeapon = 'sword';
 let bowAttack = null;
 let bowAttackCooldown = 0;
@@ -293,24 +312,37 @@ const BOW_ATTACK_COOLDOWN = .58;
 const BOW_ATTACK_DAMAGE = 18;
 const BOW_ARROW_SPEED = 22;
 
+let staffAttack = null;
+let staffAttackCooldown = 0;
+const STAFF_ATTACK_COOLDOWN = .52;
+
 function updateEquipmentUI() {
   const swordEquipped = equippedWeapon === 'sword';
+  const bowEquipped = equippedWeapon === 'bow';
+  const staffEquipped = equippedWeapon === 'staff';
+
   swordRoot.visible = swordEquipped;
-  bowRoot.visible = !swordEquipped;
+  bowRoot.visible = bowEquipped;
+  staffRoot.visible = staffEquipped;
 
   if (weaponSwitchBtn) {
-    weaponSwitchBtn.textContent = swordEquipped ? '장비: 장검' : '장비: 활';
-    weaponSwitchBtn.classList.toggle('bow-equipped', !swordEquipped);
+    const names = { sword: '장비: 장검', bow: '장비: 활', staff: '장비: 지팡이' };
+    weaponSwitchBtn.textContent = names[equippedWeapon];
+    weaponSwitchBtn.classList.toggle('bow-equipped', bowEquipped);
+    weaponSwitchBtn.classList.toggle('staff-equipped', staffEquipped);
   }
 
-  if (attackBtn) attackBtn.textContent = swordEquipped ? 'ATK' : 'SHOT';
+  if (attackBtn) {
+    attackBtn.textContent = swordEquipped ? 'ATK' : bowEquipped ? 'SHOT' : 'CAST';
+  }
+
   updateSkillUI();
 }
 
 function equipWeapon(type) {
-  if (type !== 'sword' && type !== 'bow') return;
+  if (!['sword', 'bow', 'staff'].includes(type)) return;
   if (type === equippedWeapon) return;
-  if (!playerAlive || skillAction || attack || bowAttack || dashTime > 0) return;
+  if (!playerAlive || skillAction || attack || bowAttack || staffAttack || dashTime > 0) return;
 
   equippedWeapon = type;
   comboNext = 0;
@@ -318,11 +350,15 @@ function equipWeapon(type) {
   queuedAttack = false;
 
   updateEquipmentUI();
-  showToast(type === 'sword' ? '장검 장착' : '활 장착');
+
+  const names = { sword: '장검 장착', bow: '활 장착', staff: '지팡이 장착' };
+  showToast(names[type]);
 }
 
 function toggleWeapon() {
-  equipWeapon(equippedWeapon === 'sword' ? 'bow' : 'sword');
+  const order = ['sword', 'bow', 'staff'];
+  const next = (order.indexOf(equippedWeapon) + 1) % order.length;
+  equipWeapon(order[next]);
 }
 
 function getBowAimDirection() {
@@ -427,6 +463,43 @@ function updateBowSystem(dt) {
       arrows.splice(i, 1);
     }
   }
+}
+ 
+function tryStaffAttack() {
+  if (equippedWeapon !== 'staff') return;
+  if (!playerAlive || skillAction || attack || bowAttack || staffAttack || dashTime > 0) return;
+  if (staffAttackCooldown > 0) return;
+
+  const dir = skillAimDirection();
+  const flat = dir.clone().setY(0);
+  if (flat.lengthSq() > .001) {
+    flat.normalize();
+    playerYaw = Math.atan2(flat.x, flat.z);
+    player.rotation.y = playerYaw;
+  }
+
+  staffAttack = { t: 0, duration: .34, fired: false, dir };
+  staffAttackCooldown = STAFF_ATTACK_COOLDOWN;
+}
+
+function updateStaffSystem(dt) {
+  staffAttackCooldown = Math.max(0, staffAttackCooldown - dt);
+
+  if (!staffAttack) return;
+
+  staffAttack.t += dt;
+  if (!staffAttack.fired && staffAttack.t >= .14) {
+    staffAttack.fired = true;
+    spawnSkillArrow(staffAttack.dir, {
+      speed: 22,
+      damage: 11,
+      color: 0xc9a0ff,
+      scale: .78,
+      life: 1.2
+    });
+  }
+
+  if (staffAttack.t >= staffAttack.duration) staffAttack = null;
 }
 
 // 아주 약한 대쉬 바람 이펙트: 캐릭터 뒤쪽에 짧은 반투명 속도선만 표시.
@@ -1243,6 +1316,7 @@ function respawnPlayer() {
   player.visible = true;
   skillAction = null;
   bowAttack = null;
+  staffAttack = null;
   velocityY = 0;
   grounded = true;
   invulnTime = .9;
@@ -1293,7 +1367,7 @@ function playerForward(out = new THREE.Vector3()) {
 }
 
 function tryDash() {
-  if (!playerAlive || skillAction || bowAttack || dashCharges <= 0 || dashTime > 0) return;
+  if (!playerAlive || skillAction || bowAttack || staffAttack || dashCharges <= 0 || dashTime > 0) return;
   dashCharges--;
   updateDashUI();
   const m = getMoveVector();
@@ -1304,7 +1378,7 @@ function tryDash() {
 }
 
 function tryJump() {
-  if (!playerAlive || skillAction || bowAttack || !grounded) return;
+  if (!playerAlive || skillAction || bowAttack || staffAttack || !grounded) return;
   velocityY = 10.4;
   grounded = false;
 }
@@ -1321,6 +1395,11 @@ function tryAttack() {
 
   if (equippedWeapon === 'bow') {
     tryBowAttack();
+    return;
+  }
+
+  if (equippedWeapon === 'staff') {
+    tryStaffAttack();
     return;
   }
 
@@ -1394,6 +1473,7 @@ function damagePlayer(amount) {
     player.visible = false;
     skillAction = null;
     bowAttack = null;
+    staffAttack = null;
     attack = null;
     queuedAttack = false;
     locked = false;
@@ -1531,17 +1611,17 @@ document.getElementById('jump-btn').addEventListener('pointerdown', e => {
 
 skillDashSlashBtn.addEventListener('pointerdown', e => {
   e.preventDefault();
-  startSkill('dashSlash');
+  startSkillSlot(0);
 });
 
 skillSwordWaveBtn.addEventListener('pointerdown', e => {
   e.preventDefault();
-  startSkill('swordWave');
+  startSkillSlot(1);
 });
 
 skillSpinBtn.addEventListener('pointerdown', e => {
   e.preventDefault();
-  startSkill('spinSlash');
+  startSkillSlot(2);
 });
 
 addEventListener('keydown', e => {
@@ -1553,9 +1633,9 @@ addEventListener('keydown', e => {
     e.preventDefault();
     tryJump();
   }
-  if (e.code === 'Digit1') startSkill('dashSlash');
-  if (e.code === 'Digit2') startSkill('swordWave');
-  if (e.code === 'Digit3') startSkill('spinSlash');
+  if (e.code === 'Digit1') startSkillSlot(0);
+  if (e.code === 'Digit2') startSkillSlot(1);
+  if (e.code === 'Digit3') startSkillSlot(2);
   if (e.code === 'KeyQ') toggleWeapon();
   if (e.code === 'KeyL') toggleLock();
   if (e.code === 'KeyC') toggleAutoCamera();
@@ -2531,6 +2611,37 @@ function animateRig(dt, moving) {
     }
   }
 
+  if (equippedWeapon === 'staff' && dashTime <= 0) {
+    const castActive = staffAttack || (skillAction && skillAction.weapon === 'staff');
+    const castT = castActive
+      ? Math.sin(THREE.MathUtils.clamp(
+          (staffAttack ? staffAttack.t / staffAttack.duration : skillAction.t / skillAction.duration),
+          0,
+          1
+        ) * Math.PI)
+      : 0;
+
+    // 오른손 지팡이는 몸 옆에서 들고, 주문 시 앞으로 크게 내민다.
+    rSX = THREE.MathUtils.lerp(-.10, -1.02, castT);
+    rSY = THREE.MathUtils.lerp(0, -.18, castT);
+    rSZ = THREE.MathUtils.lerp(-.08, -.34, castT);
+    rEX = THREE.MathUtils.lerp(-.20, -.08, castT);
+    rEY = 0;
+    rEZ = 0;
+    rWX = THREE.MathUtils.lerp(0, -.12, castT);
+    rWY = 0;
+    rWZ = 0;
+
+    // 왼손은 주문할 때만 보조 동작.
+    lSX = THREE.MathUtils.lerp(.08, -.56, castT);
+    lSY = THREE.MathUtils.lerp(0, .22, castT);
+    lSZ = THREE.MathUtils.lerp(.08, .34, castT);
+    lEX = THREE.MathUtils.lerp(-.12, -.44, castT);
+
+    torsoX = castT * .06;
+    torsoY = castT * -.12;
+  }
+
   if (!grounded) {
     torsoX = -.08;
     lTX = -.34;
@@ -2953,6 +3064,7 @@ function frame(now) {
   }
 
   updateBowSystem(dt);
+  updateStaffSystem(dt);
   updatePlayer(dt);
   updateSkills(dt);
   updateDummy(dt);
