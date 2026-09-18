@@ -383,7 +383,7 @@ function tryJump() {
 }
 
 const attackData = [
-  { duration: .44, hitAt: .24, damage: 10, range: 2.5, arc: 1.75, finisher: false },
+  { duration: .68, hitAt: .42, damage: 10, range: 2.5, arc: 1.75, finisher: false },
   { duration: .46, hitAt: .25, damage: 12, range: 2.55, arc: 1.85, finisher: false },
   { duration: .54, hitAt: .30, damage: 14, range: 2.75, arc: 1.65, finisher: false },
   { duration: .72, hitAt: .42, damage: 22, range: 3.25, arc: 2.75, finisher: true }
@@ -595,6 +595,64 @@ function keyed(neutral, windup, follow, wind, cut, recover) {
   return THREE.MathUtils.lerp(v, neutral, recover);
 }
 
+function solveTwoBoneArmIK(shoulderRig, elbowRig, wristRig, target, pole) {
+  const upperLen = .72;
+  const lowerLen = .66;
+  const shoulderPos = shoulderRig.position.clone();
+
+  const toTarget = target.clone().sub(shoulderPos);
+  let dist = toTarget.length();
+  const dir = toTarget.normalize();
+  dist = THREE.MathUtils.clamp(dist, Math.abs(upperLen - lowerLen) + .02, upperLen + lowerLen - .02);
+
+  const a = (upperLen * upperLen - lowerLen * lowerLen + dist * dist) / (2 * dist);
+  const h = Math.sqrt(Math.max(.0001, upperLen * upperLen - a * a));
+
+  const poleVec = pole.clone().sub(shoulderPos);
+  poleVec.addScaledVector(dir, -poleVec.dot(dir));
+  if (poleVec.lengthSq() < .0001) poleVec.set(0, 0, 1);
+  poleVec.normalize();
+
+  const elbowPos = shoulderPos.clone()
+    .addScaledVector(dir, a)
+    .addScaledVector(poleVec, h);
+
+  const upperDir = elbowPos.clone().sub(shoulderPos).normalize();
+  shoulderRig.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), upperDir);
+
+  const lowerDirTorso = target.clone().sub(elbowPos).normalize();
+  const invShoulder = shoulderRig.quaternion.clone().invert();
+  const lowerDirLocal = lowerDirTorso.applyQuaternion(invShoulder).normalize();
+  elbowRig.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), lowerDirLocal);
+
+  wristRig.rotation.set(0, 0, 0);
+}
+
+function firstAttackIKFrame(p) {
+  const wind = phase(p, 0.00, .34);
+  const hold = phase(p, .30, .40);
+  const cut = phase(p, .38, .72);
+  const recover = phase(p, .80, 1.0);
+
+  // 오른손을 왼쪽 어깨 위로 확실히 가져간다.
+  const neutral = new THREE.Vector3(.56, -.42, .02);
+  const windTarget = new THREE.Vector3(-.38, 1.16, .30);
+  // 검을 휘두른 뒤 오른손은 오른쪽/아래/약간 전방에서 끝난다.
+  const endTarget = new THREE.Vector3(.56, .08, .38);
+
+  const target = neutral.clone().lerp(windTarget, wind);
+  target.lerp(windTarget, hold * (1 - cut));
+  target.lerp(endTarget, cut);
+  target.lerp(neutral, recover);
+
+  // 팔꿈치는 몸 앞쪽/오른쪽으로 빠지게 해서 자연스러운 굽힘을 만든다.
+  const poleWind = new THREE.Vector3(.78, .78, .78);
+  const poleEnd = new THREE.Vector3(.88, .35, .60);
+  const pole = poleWind.clone().lerp(poleEnd, cut);
+
+  return { target, pole, wind, cut, recover };
+}
+
 function attackPose(index, p) {
   const wind = phase(p, 0, index === 3 ? .36 : .26);
   const cut = phase(p, index === 3 ? .30 : .20, index === 3 ? .70 : .62);
@@ -618,49 +676,33 @@ function attackPose(index, p) {
   let w, h;
 
   if (index === 0) {
-    // 1타(오른손 장검):
-    // 준비: 오른손 검을 몸을 가로질러 왼쪽 어깨 위로 넘기고,
-    // 오른팔 팔꿈치를 접으며 골반/허리를 살짝 왼쪽으로 튼다.
-    // 타격: 허리를 아주 살짝 오른쪽으로 되돌리며 오른팔 팔꿈치를 펴서
-    // 왼쪽 위 -> 오른쪽 아래 대각선으로 베고, 검끝은 오른쪽 아래에서 멈춘다.
-    // 종료 시 오른쪽 어깨는 몸 중심보다 아주 미세하게 앞쪽에 남긴다.
+    // 1타 오른손 장검: 오른팔은 아래 animateRig의 IK로 직접 제어.
+    // 여기서는 허리/골반/왼팔/하체만 동기화한다.
     w = {
-      hipY: .18, torsoX: -.03, torsoY: .30, torsoZ: .05,
-
-      // 오른손/오른팔이 가슴 앞을 지나 왼쪽 어깨 위로 올라감
-      rSX: -.38, rSY: .34, rSZ: -1.12,
-      rEX: -1.02, rEY: -.03, rEZ: .08,
-      rWX: .05, rWY: .12, rWZ: .18,
-
-      // 왼팔은 과하게 움직이지 않고 균형만 잡음
-      lSX: .18, lSY: -.03, lSZ: .12,
-      lEX: -.24, lEY: 0, lEZ: -.03,
+      hipY: .18, torsoX: -.03, torsoY: .28, torsoZ: .04,
+      rSX: -.08, rSY: 0, rSZ: -.08,
+      rEX: -.18, rEY: 0, rEZ: 0,
+      rWX: 0, rWY: 0, rWZ: 0,
+      lSX: .18, lSY: -.03, lSZ: .14,
+      lEX: -.30, lEY: 0, lEZ: -.03,
       lWX: 0, lWY: 0, lWZ: -.02,
-
-      lTX: .05, rTX: -.08,
-      lKX: .06, rKX: .12,
+      lTX: .04, rTX: -.07,
+      lKX: .06, rKX: .11,
       lAX: .02, rAX: -.04,
-
-      headX: -.01, headY: -.06
+      headX: -.01, headY: -.05
     };
     h = {
-      hipY: -.08, torsoX: .07, torsoY: -.14, torsoZ: -.03,
-
-      // 팔꿈치를 펴며 오른쪽 아래까지 베기.
-      // torsoY를 살짝 음수로 남겨 오른쪽 어깨가 미세하게 전방에 남도록 함.
-      rSX: -.62, rSY: -.28, rSZ: -.50,
-      rEX: -.12, rEY: .02, rEZ: -.04,
-      rWX: -.03, rWY: -.08, rWZ: -.14,
-
-      lSX: .02, lSY: .03, lSZ: .08,
+      hipY: -.07, torsoX: .06, torsoY: -.12, torsoZ: -.02,
+      rSX: -.08, rSY: 0, rSZ: -.08,
+      rEX: -.18, rEY: 0, rEZ: 0,
+      rWX: 0, rWY: 0, rWZ: 0,
+      lSX: .02, lSY: .02, lSZ: .08,
       lEX: -.18, lEY: 0, lEZ: .02,
       lWX: 0, lWY: 0, lWZ: .01,
-
-      lTX: -.04, rTX: .06,
-      lKX: .10, rKX: .04,
+      lTX: -.03, rTX: .05,
+      lKX: .09, rKX: .04,
       lAX: -.03, rAX: .02,
-
-      headX: .01, headY: .04
+      headX: .01, headY: .03
     };
   } else if (index === 1) {
     // 2타: 1타가 끝난 낮은 위치에서 반대 방향으로 올려베기.
@@ -862,9 +904,15 @@ function animateRig(dt, moving) {
 
   dampRot(torsoRig, torsoX, torsoY, torsoZ, speed, dt);
 
-  dampRot(rightArmRig.shoulder, rSX, rSY, rSZ, speed, dt);
-  dampRot(rightArmRig.elbow, rEX, rEY, rEZ, speed + 2, dt);
-  dampRot(rightArmRig.wrist, rWX, rWY, rWZ, speed + 3, dt);
+  if (attack && attack.index === 0) {
+    const p = Math.min(1, attack.t / attack.duration);
+    const ik = firstAttackIKFrame(p);
+    solveTwoBoneArmIK(rightArmRig.shoulder, rightArmRig.elbow, rightArmRig.wrist, ik.target, ik.pole);
+  } else {
+    dampRot(rightArmRig.shoulder, rSX, rSY, rSZ, speed, dt);
+    dampRot(rightArmRig.elbow, rEX, rEY, rEZ, speed + 2, dt);
+    dampRot(rightArmRig.wrist, rWX, rWY, rWZ, speed + 3, dt);
+  }
 
   dampRot(leftArmRig.shoulder, lSX, lSY, lSZ, speed, dt);
   dampRot(leftArmRig.elbow, lEX, lEY, lEZ, speed + 2, dt);
