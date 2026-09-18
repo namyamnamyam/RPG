@@ -225,36 +225,65 @@ const swordRestQuaternion = swordRoot.quaternion.clone();
 // 두 번째 장비: 코드로 만든 기본 활.
 // 활은 왼손에 고정하고, 오른손은 발사 모션에서 시위를 당기는 역할.
 const bowRoot = new THREE.Group();
-bowRoot.position.set(.02, -.12, .02);
+bowRoot.position.set(0, -.10, 0);
 leftArmRig.hand.add(bowRoot);
 
 const bowWoodMat = new THREE.MeshStandardMaterial({ color: 0x7a4d2a, roughness: .78 });
 const bowGripMat = new THREE.MeshStandardMaterial({ color: 0x35271e, roughness: .88 });
 
+// 손이 활 중앙 손잡이를 정확히 잡도록 활 자체를 손잡이 기준으로 재중심화.
 const bowCurve = new THREE.CatmullRomCurve3([
-  new THREE.Vector3(0, .78, 0),
-  new THREE.Vector3(.18, .52, 0),
-  new THREE.Vector3(.29, .18, 0),
-  new THREE.Vector3(.31, 0, 0),
-  new THREE.Vector3(.29, -.18, 0),
-  new THREE.Vector3(.18, -.52, 0),
-  new THREE.Vector3(0, -.78, 0)
+  new THREE.Vector3(-.31, .78, 0),
+  new THREE.Vector3(-.13, .52, 0),
+  new THREE.Vector3(-.02, .18, 0),
+  new THREE.Vector3(0, 0, 0),
+  new THREE.Vector3(-.02, -.18, 0),
+  new THREE.Vector3(-.13, -.52, 0),
+  new THREE.Vector3(-.31, -.78, 0)
 ]);
 mesh(new THREE.TubeGeometry(bowCurve, 32, .035, 7, false), bowWoodMat, bowRoot, [0, 0, 0]);
-mesh(new THREE.BoxGeometry(.12, .30, .10), bowGripMat, bowRoot, [.30, 0, 0]);
+mesh(new THREE.BoxGeometry(.12, .30, .10), bowGripMat, bowRoot, [0, 0, 0]);
 
-const bowStringGeo = new THREE.BufferGeometry().setFromPoints([
-  new THREE.Vector3(0, .78, 0),
-  new THREE.Vector3(.30, 0, 0),
-  new THREE.Vector3(0, -.78, 0)
-]);
 const bowString = new THREE.Line(
-  bowStringGeo,
-  new THREE.LineBasicMaterial({ color: 0xe8e0d2, transparent: true, opacity: .88 })
+  new THREE.BufferGeometry().setFromPoints([
+    new THREE.Vector3(-.31, .78, 0),
+    new THREE.Vector3(-.31, 0, 0),
+    new THREE.Vector3(-.31, -.78, 0)
+  ]),
+  new THREE.LineBasicMaterial({ color: 0xe8e0d2, transparent: true, opacity: .92 })
 );
 bowRoot.add(bowString);
-bowRoot.rotation.z = -.08;
+
+// 현재 캐릭터 체격에 맞춰 기존보다 크게.
+bowRoot.scale.setScalar(1.4);
 bowRoot.visible = false;
+
+const bowParentWorldQ = new THREE.Quaternion();
+const bowDesiredWorldQ = new THREE.Quaternion();
+const bowYAxis = new THREE.Vector3(0, 1, 0);
+
+function updateBowVisual(draw = 0) {
+  if (equippedWeapon !== 'bow') return;
+
+  // 손 위치는 그대로 따라가지만, 활의 긴 축은 항상 세로를 유지한다.
+  // 따라서 팔이 앞으로 뻗어도 활이 팔 축을 따라 눕지 않는다.
+  leftArmRig.hand.updateWorldMatrix(true, false);
+  leftArmRig.hand.getWorldQuaternion(bowParentWorldQ);
+
+  bowDesiredWorldQ.setFromAxisAngle(bowYAxis, player.rotation.y);
+  bowRoot.quaternion
+    .copy(bowParentWorldQ)
+    .invert()
+    .multiply(bowDesiredWorldQ);
+
+  const pull = THREE.MathUtils.clamp(draw, 0, 1) * .52;
+  bowString.geometry.setFromPoints([
+    new THREE.Vector3(-.31, .78, 0),
+    new THREE.Vector3(-.31, 0, -pull),
+    new THREE.Vector3(-.31, -.78, 0)
+  ]);
+  bowString.geometry.attributes.position.needsUpdate = true;
+}
 
 let equippedWeapon = 'sword';
 let bowAttack = null;
@@ -357,7 +386,7 @@ function tryBowAttack() {
 
   bowAttack = {
     t: 0,
-    duration: .38,
+    duration: .56,
     fired: false,
     dir
   };
@@ -370,7 +399,7 @@ function updateBowSystem(dt) {
   if (bowAttack) {
     bowAttack.t += dt;
 
-    if (!bowAttack.fired && bowAttack.t >= .15) {
+    if (!bowAttack.fired && bowAttack.t >= .30) {
       bowAttack.fired = true;
       spawnArrow(bowAttack.dir);
     }
@@ -2062,30 +2091,75 @@ function animateRig(dt, moving) {
   let headY = 0;
 
   if (equippedWeapon === 'bow' && dashTime <= 0 && !skillAction) {
-    const draw = bowAttack
-      ? Math.sin(THREE.MathUtils.clamp(bowAttack.t / bowAttack.duration, 0, 1) * Math.PI)
-      : 0;
+    if (!bowAttack) {
+      // 평상시: 활을 몸 옆 아래에 자연스럽게 들고 있는 자세.
+      // 사격하지 않을 때 왼팔을 계속 앞으로 뻗어두지 않는다.
+      lSX = .10;
+      lSY = -.10;
+      lSZ = .16;
+      lEX = -.20;
+      lEY = 0;
+      lEZ = 0;
+      lWX = 0;
+      lWY = 0;
+      lWZ = -.05;
 
-    // 왼팔은 활을 전방으로 뻗고, 오른팔은 얼굴 옆으로 시위를 당긴다.
-    lSX = -1.18;
-    lSY = .16;
-    lSZ = -.50;
-    lEX = -.10;
-    lEY = 0;
-    lEZ = 0;
+      rSX = -.08;
+      rSY = 0;
+      rSZ = -.08;
+      rEX = -.18;
+      rEY = 0;
+      rEZ = 0;
+      rWX = 0;
+      rWY = 0;
+      rWZ = 0;
+    } else {
+      const u = THREE.MathUtils.clamp(bowAttack.t / bowAttack.duration, 0, 1);
 
-    rSX = -.82 - draw * .22;
-    rSY = .48 + draw * .34;
-    rSZ = .42 + draw * .20;
-    rEX = -.72 - draw * .78;
-    rEY = 0;
-    rEZ = 0;
-    rWX = -.08;
-    rWY = .10 + draw * .12;
-    rWZ = .08;
+      // 먼저 활을 들어 조준하고, 그 다음 오른손을 얼굴 옆까지 당긴다.
+      const aim = THREE.MathUtils.smoothstep(
+        THREE.MathUtils.clamp(u / .24, 0, 1),
+        0,
+        1
+      );
 
-    torsoY = draw * -.12;
-    headY = draw * .08;
+      let draw = 0;
+      if (u < .18) {
+        draw = 0;
+      } else if (u < .54) {
+        draw = THREE.MathUtils.smoothstep((u - .18) / .36, 0, 1);
+      } else if (u < .62) {
+        draw = 1;
+      } else {
+        draw = 1 - THREE.MathUtils.smoothstep((u - .62) / .38, 0, 1);
+      }
+
+      // 왼팔: 활을 정면으로 확실하게 뻗는다.
+      lSX = THREE.MathUtils.lerp(.10, -1.32, aim);
+      lSY = THREE.MathUtils.lerp(-.10, .12, aim);
+      lSZ = THREE.MathUtils.lerp(.16, -.20, aim);
+      lEX = THREE.MathUtils.lerp(-.20, -.08, aim);
+      lEY = 0;
+      lEZ = 0;
+      lWX = THREE.MathUtils.lerp(0, -.10, aim);
+      lWY = 0;
+      lWZ = THREE.MathUtils.lerp(-.05, .08, aim);
+
+      // 오른팔: 얼굴 옆까지 크게 당겨 실제 활시위 당기는 실루엣을 만든다.
+      rSX = THREE.MathUtils.lerp(-.08, -1.08, aim);
+      rSY = THREE.MathUtils.lerp(0, .46 + draw * .40, aim);
+      rSZ = THREE.MathUtils.lerp(-.08, .30 + draw * .24, aim);
+      rEX = THREE.MathUtils.lerp(-.18, -.68 - draw * .92, aim);
+      rEY = 0;
+      rEZ = 0;
+      rWX = THREE.MathUtils.lerp(0, -.10, aim);
+      rWY = THREE.MathUtils.lerp(0, .08 + draw * .18, aim);
+      rWZ = THREE.MathUtils.lerp(0, .06, aim);
+
+      torsoY = draw * -.16;
+      torsoZ = draw * -.04;
+      headY = draw * .10;
+    }
   }
 
   if (!grounded) {
@@ -2231,6 +2305,21 @@ function animateRig(dt, moving) {
 
   // 어떤 애니메이션/IK도 이 선을 넘어 인간 관절 범위를 벗어날 수 없다.
   applyHumanJointLimits();
+
+  if (equippedWeapon === 'bow') {
+    let stringDraw = 0;
+    if (bowAttack) {
+      const u = THREE.MathUtils.clamp(bowAttack.t / bowAttack.duration, 0, 1);
+      if (u >= .18 && u < .54) {
+        stringDraw = THREE.MathUtils.smoothstep((u - .18) / .36, 0, 1);
+      } else if (u >= .54 && u < .62) {
+        stringDraw = 1;
+      } else if (u >= .62) {
+        stringDraw = 1 - THREE.MathUtils.smoothstep((u - .62) / .38, 0, 1);
+      }
+    }
+    updateBowVisual(stringDraw);
+  }
 
   // 모션 실루엣 확정 전까지 자기충돌은 꺼둔다.
   if (USE_SELF_COLLISION) enforceSelfCollision();
