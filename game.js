@@ -209,6 +209,7 @@ leftArmRig.shoulder.rotation.z = .08;
 rightArmRig.elbow.rotation.x = -.12;
 leftArmRig.elbow.rotation.x = -.08;
 swordRoot.rotation.z = .03;
+const swordRestQuaternion = swordRoot.quaternion.clone();
 
 // 아주 약한 대쉬 바람 이펙트: 캐릭터 뒤쪽에 짧은 반투명 속도선만 표시.
 const dashWind = new THREE.Group();
@@ -691,7 +692,46 @@ function firstAttackIKFrame(p) {
     torsoZ = THREE.MathUtils.lerp(.018, 0, t);
   }
 
-  return { target, pole, hipY, torsoY, torsoX, torsoZ };
+  // 중간 타격 구간에서 검끝이 정면 적을 향하도록 별도 블렌드.
+  let swordForwardBlend = 0;
+  if (p >= .34 && p < .50) {
+    swordForwardBlend = phase(p, .34, .50);
+  } else if (p >= .50 && p < .64) {
+    swordForwardBlend = 1;
+  } else if (p >= .64 && p < .80) {
+    swordForwardBlend = 1 - phase(p, .64, .80);
+  }
+
+  return { target, pole, hipY, torsoY, torsoX, torsoZ, swordForwardBlend };
+}
+
+function aimSwordTipForward(blend) {
+  const parentWorldQ = new THREE.Quaternion();
+  const playerWorldQ = new THREE.Quaternion();
+  const desiredWorldQ = new THREE.Quaternion();
+  const desiredLocalQ = new THREE.Quaternion();
+
+  swordRoot.parent.getWorldQuaternion(parentWorldQ);
+  player.getWorldQuaternion(playerWorldQ);
+
+  const forwardWorld = new THREE.Vector3(0, 0, 1)
+    .applyQuaternion(playerWorldQ)
+    .normalize();
+
+  // 검날/검끝 축은 swordRoot 로컬 -Y 방향.
+  desiredWorldQ.setFromUnitVectors(
+    new THREE.Vector3(0, -1, 0),
+    forwardWorld
+  );
+
+  desiredLocalQ
+    .copy(parentWorldQ)
+    .invert()
+    .multiply(desiredWorldQ);
+
+  swordRoot.quaternion
+    .copy(swordRestQuaternion)
+    .slerp(desiredLocalQ, THREE.MathUtils.clamp(blend, 0, 1));
 }
 
 function attackPose(index, p) {
@@ -980,10 +1020,18 @@ function animateRig(dt, moving) {
       firstIK.target,
       firstIK.pole
     );
+
+    // 중간 타격 순간: 검끝이 캐릭터 정면, 즉 적 방향을 정확히 향한다.
+    aimSwordTipForward(firstIK.swordForwardBlend);
   } else {
     dampRot(rightArmRig.shoulder, rSX, rSY, rSZ, speed, dt);
     dampRot(rightArmRig.elbow, rEX, rEY, rEZ, speed + 2, dt);
     dampRot(rightArmRig.wrist, rWX, rWY, rWZ, speed + 3, dt);
+
+    swordRoot.quaternion.slerp(
+      swordRestQuaternion,
+      1 - Math.exp(-18 * dt)
+    );
   }
 
   dampRot(leftArmRig.shoulder, lSX, lSY, lSZ, speed, dt);
