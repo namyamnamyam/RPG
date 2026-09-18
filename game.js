@@ -558,71 +558,123 @@ function keyed(neutral, windup, follow, wind, cut, recover) {
 }
 
 function attackPose(index, p) {
-  const wind = phase(p, 0, index === 3 ? .34 : .28);
-  const cut = phase(p, index === 3 ? .28 : .22, index === 3 ? .68 : .66);
-  const recover = phase(p, index === 3 ? .76 : .72, 1);
+  const wind = phase(p, 0, index === 3 ? .36 : .30);
+  const cut = phase(p, index === 3 ? .30 : .24, index === 3 ? .70 : .67);
+  const recover = phase(p, index === 3 ? .80 : .74, 1);
 
   const n = {
     hipY: 0,
-    torsoX: 0,
-    torsoY: 0,
-    torsoZ: 0,
-    shoulderX: -.08,
-    shoulderY: 0,
-    shoulderZ: -.08,
-    elbowX: -.18,
-    elbowZ: 0,
-    wristX: 0,
-    wristY: 0,
-    wristZ: 0,
-    leftX: .08,
-    leftY: 0,
-    leftZ: .08,
-    leftElbow: -.12
+    torsoX: 0, torsoY: 0, torsoZ: 0,
+    rSX: -.08, rSY: 0, rSZ: -.08,
+    rEX: -.18, rEY: 0, rEZ: 0,
+    rWX: 0, rWY: 0, rWZ: 0,
+    lSX: .08, lSY: 0, lSZ: .08,
+    lEX: -.12, lEY: 0, lEZ: 0,
+    lWX: 0, lWY: 0, lWZ: 0,
+    lTX: 0, rTX: 0,
+    lKX: 0, rKX: 0,
+    lAX: 0, rAX: 0,
+    headX: 0, headY: 0
   };
 
   let w, h;
 
   if (index === 0) {
-    // 1타: 오른쪽 위에서 왼쪽 아래로 크게 내려베기
-    w = { hipY: -.24, torsoX: -.04, torsoY: -.52, torsoZ: -.12,
-      shoulderX: .28, shoulderY: -.45, shoulderZ: -1.78,
-      elbowX: -.72, elbowZ: -.12, wristX: 0, wristY: 0, wristZ: -.28,
-      leftX: .34, leftY: .08, leftZ: .32, leftElbow: -.28 };
-    h = { hipY: .22, torsoX: .12, torsoY: .58, torsoZ: .14,
-      shoulderX: -.82, shoulderY: .62, shoulderZ: -.28,
-      elbowX: -.10, elbowZ: .12, wristX: 0, wristY: 0, wristZ: .42,
-      leftX: -.08, leftY: -.16, leftZ: .18, leftElbow: -.18 };
+    // 1타: 오른쪽 위에서 왼쪽 아래. 팔꿈치를 깊게 접었다가 베는 순간 쭉 편다.
+    w = {
+      hipY: -.28, torsoX: -.06, torsoY: -.56, torsoZ: -.13,
+      rSX: .20, rSY: -.52, rSZ: -1.55,
+      rEX: -1.32, rEY: .10, rEZ: -.28,
+      rWX: .18, rWY: -.18, rWZ: -.58,
+      lSX: .42, lSY: .12, lSZ: .34,
+      lEX: -.58, lEY: 0, lEZ: .18,
+      lWX: 0, lWY: 0, lWZ: .10,
+      lTX: -.18, rTX: .12, lKX: .26, rKX: .10, lAX: -.10, rAX: .06,
+      headX: -.03, headY: .12
+    };
+    h = {
+      hipY: .24, torsoX: .16, torsoY: .64, torsoZ: .15,
+      rSX: -.86, rSY: .68, rSZ: -.30,
+      rEX: -.08, rEY: -.06, rEZ: .16,
+      rWX: -.10, rWY: .22, rWZ: .42,
+      lSX: -.18, lSY: -.20, lSZ: .18,
+      lEX: -.26, lEY: 0, lEZ: -.10,
+      lWX: 0, lWY: 0, lWZ: -.08,
+      lTX: .10, rTX: -.20, lKX: .08, rKX: .24, lAX: .06, rAX: -.10,
+      headX: .04, headY: -.16
+    };
   } else if (index === 1) {
-    // 2타: 왼쪽 아래에서 오른쪽 위로 역대각 올려베기
-    w = { hipY: .25, torsoX: .10, torsoY: .50, torsoZ: .14,
-      shoulderX: -.86, shoulderY: .62, shoulderZ: -.18,
-      elbowX: -.16, elbowZ: .10, wristX: 0, wristY: 0, wristZ: .35,
-      leftX: -.04, leftY: -.14, leftZ: .18, leftElbow: -.16 };
-    h = { hipY: -.24, torsoX: -.06, torsoY: -.58, torsoZ: -.16,
-      shoulderX: .12, shoulderY: -.66, shoulderZ: -2.10,
-      elbowX: -.62, elbowZ: -.12, wristX: 0, wristY: 0, wristZ: -.36,
-      leftX: .30, leftY: .12, leftZ: .34, leftElbow: -.30 };
+    // 2타: 왼쪽 아래에서 오른쪽 위. 손목을 뒤집고 팔꿈치가 따라 올라오는 역대각.
+    w = {
+      hipY: .30, torsoX: .12, torsoY: .54, torsoZ: .15,
+      rSX: -.92, rSY: .72, rSZ: -.22,
+      rEX: -.30, rEY: -.18, rEZ: .24,
+      rWX: -.18, rWY: .26, rWZ: .58,
+      lSX: -.10, lSY: -.18, lSZ: .22,
+      lEX: -.36, lEY: 0, lEZ: -.12,
+      lWX: 0, lWY: 0, lWZ: -.10,
+      lTX: .12, rTX: -.24, lKX: .12, rKX: .30, lAX: .05, rAX: -.14,
+      headX: .03, headY: -.12
+    };
+    h = {
+      hipY: -.28, torsoX: -.08, torsoY: -.64, torsoZ: -.17,
+      rSX: .16, rSY: -.74, rSZ: -2.02,
+      rEX: -1.08, rEY: .12, rEZ: -.26,
+      rWX: .18, rWY: -.28, rWZ: -.52,
+      lSX: .38, lSY: .16, lSZ: .38,
+      lEX: -.64, lEY: 0, lEZ: .18,
+      lWX: 0, lWY: 0, lWZ: .12,
+      lTX: -.24, rTX: .14, lKX: .32, rKX: .10, lAX: -.12, rAX: .06,
+      headX: -.04, headY: .16
+    };
   } else if (index === 2) {
-    // 3타: 머리 위까지 크게 들어 올린 뒤 정면 내려찍기
-    w = { hipY: -.06, torsoX: -.16, torsoY: -.08, torsoZ: -.03,
-      shoulderX: .08, shoulderY: -.12, shoulderZ: -2.92,
-      elbowX: -.78, elbowZ: 0, wristX: 0, wristY: 0, wristZ: -.05,
-      leftX: .42, leftY: .18, leftZ: -.42, leftElbow: -.50 };
-    h = { hipY: .05, torsoX: .34, torsoY: .08, torsoZ: .02,
-      shoulderX: -1.02, shoulderY: .12, shoulderZ: -.08,
-      elbowX: -.04, elbowZ: 0, wristX: 0, wristY: 0, wristZ: .08,
-      leftX: -.18, leftY: -.12, leftZ: .32, leftElbow: -.22 };
+    // 3타: 양 무릎을 굽히며 검을 머리 위로 당겼다가, 다리를 펴면서 강하게 내려찍는다.
+    w = {
+      hipY: -.08, torsoX: -.20, torsoY: -.10, torsoZ: -.02,
+      rSX: .10, rSY: -.18, rSZ: -2.72,
+      rEX: -1.42, rEY: .06, rEZ: -.08,
+      rWX: .30, rWY: -.06, rWZ: -.12,
+      lSX: .70, lSY: .22, lSZ: -.72,
+      lEX: -.92, lEY: 0, lEZ: .16,
+      lWX: .12, lWY: 0, lWZ: .16,
+      lTX: -.34, rTX: -.34, lKX: .78, rKX: .78, lAX: -.24, rAX: -.24,
+      headX: -.12, headY: .04
+    };
+    h = {
+      hipY: .06, torsoX: .38, torsoY: .08, torsoZ: .02,
+      rSX: -1.10, rSY: .12, rSZ: -.06,
+      rEX: -.05, rEY: -.04, rEZ: .02,
+      rWX: -.22, rWY: .04, rWZ: .10,
+      lSX: -.28, lSY: -.16, lSZ: .38,
+      lEX: -.30, lEY: 0, lEZ: -.12,
+      lWX: 0, lWY: 0, lWZ: -.06,
+      lTX: .04, rTX: .04, lKX: .06, rKX: .06, lAX: .10, rAX: .10,
+      headX: .12, headY: -.04
+    };
   } else {
-    // 4타: 몸 전체를 감아 돌리는 대형 횡베기 마무리
-    w = { hipY: -.72, torsoX: .10, torsoY: -.98, torsoZ: -.08,
-      shoulderX: -.88, shoulderY: -1.18, shoulderZ: -1.02,
-      elbowX: -.22, elbowZ: -.10, wristX: 0, wristY: 0, wristZ: -.18,
-      leftX: .55, leftY: .20, leftZ: .62, leftElbow: -.36 };
-    h = { hipY: .78, torsoX: .16, torsoY: 1.10, torsoZ: .10,
-      shoulderX: -.72, shoulderY: 1.28, shoulderZ: -.70,
-      elbowX: -.06, elbowZ: .12, wristX: 0, wristY: 0, wristZ: .22,
-      leftX: -.35, leftY: -.25, leftZ: -.52, leftElbow: -.22 };
+    // 4타: 무릎-골반-몸통-어깨-팔꿈치-손목 순으로 풀리는 큰 횡베기.
+    w = {
+      hipY: -.82, torsoX: .12, torsoY: -1.05, torsoZ: -.10,
+      rSX: -.82, rSY: -1.28, rSZ: -.94,
+      rEX: -1.22, rEY: .18, rEZ: -.24,
+      rWX: .16, rWY: -.34, rWZ: -.50,
+      lSX: .68, lSY: .30, lSZ: .72,
+      lEX: -.82, lEY: 0, lEZ: .28,
+      lWX: 0, lWY: 0, lWZ: .18,
+      lTX: -.34, rTX: .22, lKX: .52, rKX: .32, lAX: -.16, rAX: .10,
+      headX: -.04, headY: .24
+    };
+    h = {
+      hipY: .88, torsoX: .18, torsoY: 1.16, torsoZ: .12,
+      rSX: -.68, rSY: 1.36, rSZ: -.62,
+      rEX: -.04, rEY: -.14, rEZ: .18,
+      rWX: -.14, rWY: .38, rWZ: .46,
+      lSX: -.46, lSY: -.30, lSZ: -.60,
+      lEX: -.24, lEY: 0, lEZ: -.18,
+      lWX: 0, lWY: 0, lWZ: -.14,
+      lTX: .20, rTX: -.32, lKX: .12, rKX: .42, lAX: .08, rAX: -.18,
+      headX: .06, headY: -.28
+    };
   }
 
   const out = {};
@@ -631,7 +683,7 @@ function attackPose(index, p) {
 }
 
 function animateRig(dt, moving) {
-  const speed = 13;
+  const speed = 15;
   const run = moving && grounded && dashTime <= 0 && !attack;
   const cycle = elapsed * 9.5;
   const step = run ? Math.sin(cycle) : 0;
@@ -639,116 +691,134 @@ function animateRig(dt, moving) {
   const bob = run ? Math.abs(Math.sin(cycle * .5)) * .045 : Math.sin(elapsed * 1.8) * .012;
 
   hipsRig.position.y = damp(hipsRig.position.y, 1.7 + bob, 10, dt);
-  if (!attack) hipsRig.rotation.y = damp(hipsRig.rotation.y, run ? step * .035 : 0, 10, dt);
-  hipsRig.rotation.z = damp(hipsRig.rotation.z, run ? -step * .02 : 0, 10, dt);
+  if (!attack) hipsRig.rotation.y = damp(hipsRig.rotation.y, run ? step * .05 : 0, 10, dt);
+  hipsRig.rotation.z = damp(hipsRig.rotation.z, run ? -step * .025 : 0, 10, dt);
 
-  let torsoX = 0;
+  let torsoX = run ? .035 : 0;
   let torsoY = 0;
-  let torsoZ = 0;
-  let rSX = run ? step2 * .42 : -.08;
-  let lSX = run ? step * .42 : .08;
+  let torsoZ = run ? -step * .025 : 0;
+
+  let rSX = run ? step2 * .52 : -.08;
+  let lSX = run ? step * .52 : .08;
   let rSY = 0, lSY = 0;
   let rSZ = -.08, lSZ = .08;
-  let rEX = run ? -.28 - Math.max(0, step2) * .28 : -.18;
-  let lEX = run ? -.22 - Math.max(0, step) * .2 : -.12;
-  let rEZ = 0, lEZ = 0;
-  let rWZ = 0;
-  let lWZ = 0;
 
-  let lTX = run ? step * .68 : 0;
-  let rTX = run ? step2 * .68 : 0;
-  let lKX = run ? Math.max(0, -step) * 1.0 : 0;
-  let rKX = run ? Math.max(0, -step2) * 1.0 : 0;
-  let lAX = run ? -Math.max(0, step) * .22 : 0;
-  let rAX = run ? -Math.max(0, step2) * .22 : 0;
+  // 걷기에서도 팔꿈치가 접혔다 펴지도록 한다.
+  let rEX = run ? -.34 - Math.max(0, step2) * .42 : -.18;
+  let lEX = run ? -.28 - Math.max(0, step) * .36 : -.12;
+  let rEY = 0, lEY = 0;
+  let rEZ = run ? step2 * .06 : 0, lEZ = run ? -step * .06 : 0;
+
+  let rWX = 0, rWY = 0, rWZ = run ? -step2 * .08 : 0;
+  let lWX = 0, lWY = 0, lWZ = run ? step * .06 : 0;
+
+  let lTX = run ? step * .72 : 0;
+  let rTX = run ? step2 * .72 : 0;
+  let lKX = run ? Math.max(0, -step) * 1.08 : 0;
+  let rKX = run ? Math.max(0, -step2) * 1.08 : 0;
+  let lAX = run ? (-Math.max(0, step) * .24 + Math.max(0, -step) * .10) : 0;
+  let rAX = run ? (-Math.max(0, step2) * .24 + Math.max(0, -step2) * .10) : 0;
+
+  let headX = 0;
+  let headY = 0;
 
   if (!grounded) {
     torsoX = -.08;
-    lTX = -.3;
-    rTX = .2;
-    lKX = .7;
-    rKX = .45;
-    lSX = -.22;
-    rSX = -.28;
-    lEX = -.45;
-    rEX = -.52;
+    lTX = -.34;
+    rTX = .22;
+    lKX = .78;
+    rKX = .52;
+    lAX = -.18;
+    rAX = .08;
+    lSX = -.28;
+    rSX = -.36;
+    lEX = -.70;
+    rEX = -.78;
+    lWZ = .12;
+    rWZ = -.14;
+    headX = .08;
   }
 
   if (dashTime > 0) {
-    // 낮게 몸을 앞으로 던지는 질주형 대쉬. 팔은 뒤로 빼고 한쪽 다리는 앞으로 접는다.
-    torsoX = .46;
+    // 진짜 관절을 쓰는 낮은 질주 자세.
+    torsoX = .58;
     torsoY = 0;
     torsoZ = 0;
-    hipsRig.position.y = damp(hipsRig.position.y, 1.58, 18, dt);
-    hipsRig.rotation.x = damp(hipsRig.rotation.x, .12, 18, dt);
-    lTX = -.55;
-    rTX = .42;
-    lKX = 1.02;
-    rKX = .30;
-    lAX = -.15;
-    rAX = .12;
-    lSX = .74;
-    rSX = .66;
-    lSY = -.08;
-    rSY = .10;
-    lSZ = .18;
-    rSZ = -.22;
-    lEX = -.24;
-    rEX = -.30;
+    hipsRig.position.y = damp(hipsRig.position.y, 1.50, 22, dt);
+    hipsRig.rotation.x = damp(hipsRig.rotation.x, .18, 22, dt);
+
+    lTX = -.76;
+    rTX = .52;
+    lKX = 1.24;
+    rKX = .48;
+    lAX = -.28;
+    rAX = .18;
+
+    lSX = .96;
+    rSX = .88;
+    lSY = -.12;
+    rSY = .14;
+    lSZ = .22;
+    rSZ = -.26;
+
+    lEX = -.92;
+    rEX = -1.06;
+    lEZ = .12;
+    rEZ = -.14;
+
+    lWX = .12;
+    rWX = .18;
+    lWZ = .18;
+    rWZ = -.22;
+    headX = .20;
   } else {
-    hipsRig.rotation.x = damp(hipsRig.rotation.x, 0, 10, dt);
+    hipsRig.rotation.x = damp(hipsRig.rotation.x, 0, 12, dt);
   }
 
   if (attack) {
     const p = Math.min(1, attack.t / attack.duration);
     const pose = attackPose(attack.index, p);
-    hipsRig.rotation.y = damp(hipsRig.rotation.y, pose.hipY, 18, dt);
+
+    hipsRig.rotation.y = damp(hipsRig.rotation.y, pose.hipY, 20, dt);
     torsoX = pose.torsoX;
     torsoY = pose.torsoY;
     torsoZ = pose.torsoZ;
-    rSX = pose.shoulderX;
-    rSY = pose.shoulderY;
-    rSZ = pose.shoulderZ;
-    rEX = pose.elbowX;
-    rEZ = pose.elbowZ;
-    rWZ = pose.wristZ;
-    lSX = pose.leftX;
-    lSY = pose.leftY;
-    lSZ = pose.leftZ;
-    lEX = pose.leftElbow;
 
-    if (attack.index === 2) {
-      lTX = -.16;
-      rTX = .10;
-      lKX = .22;
-      rKX = .08;
-    } else if (attack.index === 3) {
-      lTX = -.28;
-      rTX = .22;
-      lKX = .30;
-      rKX = .12;
-    }
+    rSX = pose.rSX; rSY = pose.rSY; rSZ = pose.rSZ;
+    rEX = pose.rEX; rEY = pose.rEY; rEZ = pose.rEZ;
+    rWX = pose.rWX; rWY = pose.rWY; rWZ = pose.rWZ;
+
+    lSX = pose.lSX; lSY = pose.lSY; lSZ = pose.lSZ;
+    lEX = pose.lEX; lEY = pose.lEY; lEZ = pose.lEZ;
+    lWX = pose.lWX; lWY = pose.lWY; lWZ = pose.lWZ;
+
+    lTX = pose.lTX; rTX = pose.rTX;
+    lKX = pose.lKX; rKX = pose.rKX;
+    lAX = pose.lAX; rAX = pose.rAX;
+    headX = pose.headX;
+    headY = pose.headY;
   }
 
   dampRot(torsoRig, torsoX, torsoY, torsoZ, speed, dt);
+
   dampRot(rightArmRig.shoulder, rSX, rSY, rSZ, speed, dt);
+  dampRot(rightArmRig.elbow, rEX, rEY, rEZ, speed + 2, dt);
+  dampRot(rightArmRig.wrist, rWX, rWY, rWZ, speed + 3, dt);
+
   dampRot(leftArmRig.shoulder, lSX, lSY, lSZ, speed, dt);
-  dampRot(rightArmRig.elbow, rEX, 0, rEZ, speed, dt);
-  dampRot(leftArmRig.elbow, lEX, 0, lEZ, speed, dt);
-  dampRot(rightArmRig.wrist, 0, 0, rWZ, speed, dt);
-  dampRot(leftArmRig.wrist, 0, 0, lWZ, speed, dt);
+  dampRot(leftArmRig.elbow, lEX, lEY, lEZ, speed + 2, dt);
+  dampRot(leftArmRig.wrist, lWX, lWY, lWZ, speed + 3, dt);
 
-  dampRot(leftLegRig.thigh, lTX, 0, 0, 14, dt);
-  dampRot(rightLegRig.thigh, rTX, 0, 0, 14, dt);
-  dampRot(leftLegRig.knee, lKX, 0, 0, 16, dt);
-  dampRot(rightLegRig.knee, rKX, 0, 0, 16, dt);
-  dampRot(leftLegRig.ankle, lAX, 0, 0, 14, dt);
-  dampRot(rightLegRig.ankle, rAX, 0, 0, 14, dt);
+  dampRot(leftLegRig.thigh, lTX, 0, 0, 16, dt);
+  dampRot(rightLegRig.thigh, rTX, 0, 0, 16, dt);
+  dampRot(leftLegRig.knee, lKX, 0, 0, 18, dt);
+  dampRot(rightLegRig.knee, rKX, 0, 0, 18, dt);
+  dampRot(leftLegRig.ankle, lAX, 0, 0, 18, dt);
+  dampRot(rightLegRig.ankle, rAX, 0, 0, 18, dt);
 
-  headRig.rotation.y = damp(headRig.rotation.y, attack ? -torsoY * .32 : 0, 8, dt);
-  headRig.rotation.x = damp(headRig.rotation.x, dashTime > 0 ? .16 : 0, 8, dt);
+  headRig.rotation.x = damp(headRig.rotation.x, headX, 10, dt);
+  headRig.rotation.y = damp(headRig.rotation.y, headY, 10, dt);
 }
-
 function updatePlayer(dt) {
   elapsed += dt;
   manualCamHold = Math.max(0, manualCamHold - dt);
