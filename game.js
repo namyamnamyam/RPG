@@ -10,6 +10,11 @@ const lockBtn = document.getElementById('lock-btn');
 const lockMarker = document.getElementById('lock-marker');
 const toast = document.getElementById('toast');
 
+// iPad/Safari에서 빠른 연타가 브라우저 더블탭 확대를 일으키지 않게 한다.
+document.addEventListener('dblclick', e => {
+  e.preventDefault();
+}, { passive: false });
+
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x9eb8c5);
 scene.fog = new THREE.Fog(0x9eb8c5, 38, 95);
