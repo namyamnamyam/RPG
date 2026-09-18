@@ -192,8 +192,9 @@ function buildLeg(side) {
   return { thigh, knee, ankle };
 }
 
-const leftLegRig = buildLeg('left');
-const rightLegRig = buildLeg('right');
+// 화면/캐릭터 기준 좌우에 맞게 다리도 팔과 동일하게 매핑.
+const rightLegRig = buildLeg('left');
+const leftLegRig = buildLeg('right');
 
 const swordRoot = new THREE.Group();
 swordRoot.position.set(.02, -.18, .01);
@@ -637,10 +638,10 @@ function firstAttackIKFrame(p) {
   const recover = phase(p, .80, 1.0);
 
   // 오른손을 왼쪽 어깨 위로 확실히 가져간다.
-  const neutral = new THREE.Vector3(.56, -.42, .02);
-  const windTarget = new THREE.Vector3(-.38, 1.16, .30);
-  // 검을 휘두른 뒤 오른손은 오른쪽/아래/약간 전방에서 끝난다.
-  const endTarget = new THREE.Vector3(.56, .08, .38);
+  const neutral = new THREE.Vector3(-.56, -.42, .02);
+  const windTarget = new THREE.Vector3(.38, 1.16, .30);
+  // 오른손 기준 미러링: 왼쪽 어깨 위에서 시작해 오른쪽 아래로 끝난다.
+  const endTarget = new THREE.Vector3(-.56, .08, .38);
 
   const target = neutral.clone().lerp(windTarget, wind);
   target.lerp(windTarget, hold * (1 - cut));
@@ -648,8 +649,8 @@ function firstAttackIKFrame(p) {
   target.lerp(neutral, recover);
 
   // 팔꿈치는 몸 앞쪽/오른쪽으로 빠지게 해서 자연스러운 굽힘을 만든다.
-  const poleWind = new THREE.Vector3(.78, .78, .78);
-  const poleEnd = new THREE.Vector3(.88, .35, .60);
+  const poleWind = new THREE.Vector3(-.78, .78, .78);
+  const poleEnd = new THREE.Vector3(-.88, .35, .60);
   const pole = poleWind.clone().lerp(poleEnd, cut);
 
   return { target, pole, wind, cut, recover };
@@ -796,8 +797,8 @@ function animateRig(dt, moving) {
   const bob = run ? Math.abs(Math.sin(cycle * .5)) * .045 : Math.sin(elapsed * 1.8) * .012;
 
   hipsRig.position.y = damp(hipsRig.position.y, 1.7 + bob, 10, dt);
-  if (!attack) hipsRig.rotation.y = damp(hipsRig.rotation.y, run ? step * .05 : 0, 10, dt);
-  hipsRig.rotation.z = damp(hipsRig.rotation.z, run ? -step * .025 : 0, 10, dt);
+  if (!attack) hipsRig.rotation.y = damp(hipsRig.rotation.y, run ? -step * .05 : 0, 10, dt);
+  hipsRig.rotation.z = damp(hipsRig.rotation.z, run ? step * .025 : 0, 10, dt);
 
   let torsoX = run ? .035 : 0;
   let torsoY = 0;
@@ -884,7 +885,7 @@ function animateRig(dt, moving) {
     const p = Math.min(1, attack.t / attack.duration);
     const pose = attackPose(attack.index, p);
 
-    hipsRig.rotation.y = damp(hipsRig.rotation.y, pose.hipY, 20, dt);
+    hipsRig.rotation.y = damp(hipsRig.rotation.y, -pose.hipY, 20, dt);
     torsoX = pose.torsoX;
     torsoY = pose.torsoY;
     torsoZ = pose.torsoZ;
@@ -903,6 +904,21 @@ function animateRig(dt, moving) {
     headX = pose.headX;
     headY = pose.headY;
   }
+
+  // 전체 모션 좌우 미러링:
+  // X축 굽힘은 유지하고, 좌우 방향을 만드는 Y/Z 회전만 반전한다.
+  torsoY = -torsoY;
+  torsoZ = -torsoZ;
+
+  rSY = -rSY; rSZ = -rSZ;
+  rEY = -rEY; rEZ = -rEZ;
+  rWY = -rWY; rWZ = -rWZ;
+
+  lSY = -lSY; lSZ = -lSZ;
+  lEY = -lEY; lEZ = -lEZ;
+  lWY = -lWY; lWZ = -lWZ;
+
+  headY = -headY;
 
   dampRot(torsoRig, torsoX, torsoY, torsoZ, speed, dt);
 
