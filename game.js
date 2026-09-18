@@ -386,7 +386,7 @@ function tryJump() {
 }
 
 const attackData = [
-  { duration: .68, hitAt: .42, damage: 10, range: 2.5, arc: 1.75, finisher: false },
+  { duration: .76, hitAt: .44, damage: 10, range: 2.5, arc: 1.75, finisher: false },
   { duration: .46, hitAt: .25, damage: 12, range: 2.55, arc: 1.85, finisher: false },
   { duration: .54, hitAt: .30, damage: 14, range: 2.75, arc: 1.65, finisher: false },
   { duration: .72, hitAt: .42, damage: 22, range: 3.25, arc: 2.75, finisher: true }
@@ -632,28 +632,66 @@ function solveTwoBoneArmIK(shoulderRig, elbowRig, wristRig, target, pole) {
 }
 
 function firstAttackIKFrame(p) {
-  const wind = phase(p, 0.00, .34);
-  const hold = phase(p, .30, .40);
-  const cut = phase(p, .38, .72);
-  const recover = phase(p, .80, 1.0);
+  // 1타는 최단거리 보간이 아니라 세 개의 명확한 키 포즈를 반드시 통과한다.
+  // A: 왼쪽 어깨 뒤 준비 -> B: 정면 적을 베는 접촉 -> C: 오른쪽 아래 팔로스루.
+  const neutralTarget = new THREE.Vector3(-.56, -.42, .02);
+  const windTarget = new THREE.Vector3(.34, 1.08, -.24);
+  const contactTarget = new THREE.Vector3(.04, .50, .88);
+  const finishTarget = new THREE.Vector3(-.72, -.20, .44);
 
-  // 오른손을 왼쪽 어깨 위로 확실히 가져간다.
-  const neutral = new THREE.Vector3(-.56, -.42, .02);
-  const windTarget = new THREE.Vector3(.38, 1.16, .30);
-  // 오른손 기준 미러링: 왼쪽 어깨 위에서 시작해 오른쪽 아래로 끝난다.
-  const endTarget = new THREE.Vector3(-.56, .08, .38);
+  const neutralPole = new THREE.Vector3(-.82, .42, .54);
+  const windPole = new THREE.Vector3(-.18, 1.00, .42);
+  const contactPole = new THREE.Vector3(-.74, .58, .86);
+  const finishPole = new THREE.Vector3(-.94, .18, .64);
 
-  const target = neutral.clone().lerp(windTarget, wind);
-  target.lerp(windTarget, hold * (1 - cut));
-  target.lerp(endTarget, cut);
-  target.lerp(neutral, recover);
+  let target;
+  let pole;
+  let hipY;
+  let torsoY;
+  let torsoX;
+  let torsoZ;
 
-  // 팔꿈치는 몸 앞쪽/오른쪽으로 빠지게 해서 자연스러운 굽힘을 만든다.
-  const poleWind = new THREE.Vector3(-.78, .78, .78);
-  const poleEnd = new THREE.Vector3(-.88, .35, .60);
-  const pole = poleWind.clone().lerp(poleEnd, cut);
+  if (p < .34) {
+    // 오른쪽 팔꿈치를 크게 접으며 검을 왼쪽 어깨 뒤로 재낀다.
+    const t = phase(p, 0, .34);
+    target = neutralTarget.clone().lerp(windTarget, t);
+    pole = neutralPole.clone().lerp(windPole, t);
+    hipY = THREE.MathUtils.lerp(0, -.24, t);
+    torsoY = THREE.MathUtils.lerp(0, -.34, t);
+    torsoX = THREE.MathUtils.lerp(0, -.035, t);
+    torsoZ = THREE.MathUtils.lerp(0, -.035, t);
+  } else if (p < .59) {
+    // 팔꿈치는 절반 정도 펴지고, 허리는 거의 정면으로 돌아온다.
+    // 손/검이 반드시 캐릭터 정면의 적 위치를 통과한다.
+    const t = phase(p, .34, .59);
+    target = windTarget.clone().lerp(contactTarget, t);
+    pole = windPole.clone().lerp(contactPole, t);
+    hipY = THREE.MathUtils.lerp(-.24, -.015, t);
+    torsoY = THREE.MathUtils.lerp(-.34, -.02, t);
+    torsoX = THREE.MathUtils.lerp(-.035, .045, t);
+    torsoZ = THREE.MathUtils.lerp(-.035, 0, t);
+  } else if (p < .82) {
+    // 적을 벤 뒤 오른팔을 거의 다 펴면서 오른쪽 아래까지 크게 내려간다.
+    // 허리는 아주 미세하게 오른쪽으로 따라간다.
+    const t = phase(p, .59, .82);
+    target = contactTarget.clone().lerp(finishTarget, t);
+    pole = contactPole.clone().lerp(finishPole, t);
+    hipY = THREE.MathUtils.lerp(-.015, .075, t);
+    torsoY = THREE.MathUtils.lerp(-.02, .11, t);
+    torsoX = THREE.MathUtils.lerp(.045, .07, t);
+    torsoZ = THREE.MathUtils.lerp(0, .018, t);
+  } else {
+    // 마무리 자세에서 자연스럽게 기본 자세로 회수.
+    const t = phase(p, .82, 1);
+    target = finishTarget.clone().lerp(neutralTarget, t);
+    pole = finishPole.clone().lerp(neutralPole, t);
+    hipY = THREE.MathUtils.lerp(.075, 0, t);
+    torsoY = THREE.MathUtils.lerp(.11, 0, t);
+    torsoX = THREE.MathUtils.lerp(.07, 0, t);
+    torsoZ = THREE.MathUtils.lerp(.018, 0, t);
+  }
 
-  return { target, pole, wind, cut, recover };
+  return { target, pole, hipY, torsoY, torsoX, torsoZ };
 }
 
 function attackPose(index, p) {
@@ -920,12 +958,28 @@ function animateRig(dt, moving) {
 
   headY = -headY;
 
+  let firstIK = null;
+  if (attack && attack.index === 0) {
+    const p = Math.min(1, attack.t / attack.duration);
+    firstIK = firstAttackIKFrame(p);
+
+    // 1타만은 사용자가 지정한 허리 3단계 경로를 그대로 사용한다.
+    torsoX = firstIK.torsoX;
+    torsoY = firstIK.torsoY;
+    torsoZ = firstIK.torsoZ;
+    hipsRig.rotation.y = damp(hipsRig.rotation.y, firstIK.hipY, 24, dt);
+  }
+
   dampRot(torsoRig, torsoX, torsoY, torsoZ, speed, dt);
 
   if (attack && attack.index === 0) {
-    const p = Math.min(1, attack.t / attack.duration);
-    const ik = firstAttackIKFrame(p);
-    solveTwoBoneArmIK(rightArmRig.shoulder, rightArmRig.elbow, rightArmRig.wrist, ik.target, ik.pole);
+    solveTwoBoneArmIK(
+      rightArmRig.shoulder,
+      rightArmRig.elbow,
+      rightArmRig.wrist,
+      firstIK.target,
+      firstIK.pole
+    );
   } else {
     dampRot(rightArmRig.shoulder, rSX, rSY, rSZ, speed, dt);
     dampRot(rightArmRig.elbow, rEX, rEY, rEZ, speed + 2, dt);
