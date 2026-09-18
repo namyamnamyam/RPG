@@ -2092,22 +2092,23 @@ function animateRig(dt, moving) {
 
   if (equippedWeapon === 'bow' && dashTime <= 0 && !skillAction) {
     if (!bowAttack) {
-      // 평상시: 활을 몸 옆 아래에 자연스럽게 들고 있는 자세.
-      // 사격하지 않을 때 왼팔을 계속 앞으로 뻗어두지 않는다.
-      lSX = .10;
-      lSY = -.10;
-      lSZ = .16;
-      lEX = -.20;
+      // 평상시: 양어깨에 힘을 빼고 팔을 몸통 옆으로 내린다.
+      // 왼손만 활 손잡이를 잡은 채 몸 옆 아래에 살짝 띄운다.
+      lSX = .03;
+      lSY = -.04;
+      lSZ = .06;
+      lEX = -.28;
       lEY = 0;
       lEZ = 0;
       lWX = 0;
       lWY = 0;
-      lWZ = -.05;
+      lWZ = -.03;
 
-      rSX = -.08;
+      // 오른팔은 완전히 중립에 가깝게 내려둔다.
+      rSX = -.04;
       rSY = 0;
-      rSZ = -.08;
-      rEX = -.18;
+      rSZ = -.05;
+      rEX = -.20;
       rEY = 0;
       rEZ = 0;
       rWX = 0;
@@ -2116,12 +2117,20 @@ function animateRig(dt, moving) {
     } else {
       const u = THREE.MathUtils.clamp(bowAttack.t / bowAttack.duration, 0, 1);
 
-      // 먼저 활을 들어 조준하고, 그 다음 오른손을 얼굴 옆까지 당긴다.
-      const aim = THREE.MathUtils.smoothstep(
+      // 먼저 활을 들어 조준하고, 발사 뒤에는 양팔을 다시 자연스럽게 내린다.
+      const aimUp = THREE.MathUtils.smoothstep(
         THREE.MathUtils.clamp(u / .24, 0, 1),
         0,
         1
       );
+      const aimDown = u < .62
+        ? 1
+        : 1 - THREE.MathUtils.smoothstep(
+            THREE.MathUtils.clamp((u - .62) / .38, 0, 1),
+            0,
+            1
+          );
+      const aim = Math.min(aimUp, aimDown);
 
       let draw = 0;
       if (u < .18) {
@@ -2135,21 +2144,21 @@ function animateRig(dt, moving) {
       }
 
       // 왼팔: 활을 정면으로 확실하게 뻗는다.
-      lSX = THREE.MathUtils.lerp(.10, -1.32, aim);
-      lSY = THREE.MathUtils.lerp(-.10, .12, aim);
-      lSZ = THREE.MathUtils.lerp(.16, -.20, aim);
-      lEX = THREE.MathUtils.lerp(-.20, -.08, aim);
+      lSX = THREE.MathUtils.lerp(.03, -1.32, aim);
+      lSY = THREE.MathUtils.lerp(-.04, .12, aim);
+      lSZ = THREE.MathUtils.lerp(.06, -.20, aim);
+      lEX = THREE.MathUtils.lerp(-.28, -.08, aim);
       lEY = 0;
       lEZ = 0;
       lWX = THREE.MathUtils.lerp(0, -.10, aim);
       lWY = 0;
-      lWZ = THREE.MathUtils.lerp(-.05, .08, aim);
+      lWZ = THREE.MathUtils.lerp(-.03, .08, aim);
 
       // 오른팔: 얼굴 옆까지 크게 당겨 실제 활시위 당기는 실루엣을 만든다.
-      rSX = THREE.MathUtils.lerp(-.08, -1.08, aim);
+      rSX = THREE.MathUtils.lerp(-.04, -1.08, aim);
       rSY = THREE.MathUtils.lerp(0, .46 + draw * .40, aim);
-      rSZ = THREE.MathUtils.lerp(-.08, .30 + draw * .24, aim);
-      rEX = THREE.MathUtils.lerp(-.18, -.68 - draw * .92, aim);
+      rSZ = THREE.MathUtils.lerp(-.05, .30 + draw * .24, aim);
+      rEX = THREE.MathUtils.lerp(-.20, -.68 - draw * .92, aim);
       rEY = 0;
       rEZ = 0;
       rWX = THREE.MathUtils.lerp(0, -.10, aim);
