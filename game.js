@@ -1378,12 +1378,11 @@ function getAttack1Pose(p) {
     return lerpPose(attack1LeftShoulderBackPose, attack1FrontSlashPose, t);
   }
 
-  // 베고 난 뒤 오른쪽 아래로 천천히 빠진다.
-  const t = THREE.MathUtils.smoothstep(
-    THREE.MathUtils.clamp((p - .78) / .22, 0, 1),
-    0,
-    1
-  );
+  // 베고 난 뒤 오른쪽 아래로 빠진다.
+  // 끝에서 힘이 빠지지 않도록 ease-out을 제거하고,
+  // 마지막으로 갈수록 조금 더 밀어붙이는 가속형 보간을 쓴다.
+  const u = THREE.MathUtils.clamp((p - .78) / .22, 0, 1);
+  const t = u * u;
   return lerpPose(attack1FrontSlashPose, attack1FollowThroughPose, t);
 }
 
