@@ -1330,12 +1330,13 @@ const attack1FollowThroughPose = {
   ...attack1NeutralPose,
 
   // 베고 난 뒤 오른팔을 조금 더 펴면서 오른쪽 아래로 빠진다.
+  // 끝점에서 손이 몸통보다 아주 살짝 뒤에 남도록 어깨 X만 조정.
   hipY: .10,
   torsoX: .05,
   torsoY: .12,
   torsoZ: .02,
 
-  rSX: -.72,
+  rSX: .18,
   rSY: -.28,
   rSZ: .10,
 
