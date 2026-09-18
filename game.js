@@ -629,7 +629,7 @@ function keyed(neutral, windup, follow, wind, cut, recover) {
 const HUMAN_LIMITS = {
   shoulderX: [-1.95, 1.25],
   shoulderY: [-1.35, 1.35],
-  rightShoulderZ: [-2.45, 2.15],
+  rightShoulderZ: [-2.45, 2.45],
   leftShoulderZ: [-.72, 2.45],
 
   // 팔꿈치: 거의 한 축으로만 접힌다. 약 145도까지.
@@ -1291,10 +1291,10 @@ const attack1LeftShoulderBackPose = {
 
   // 어깨를 몸 반대편으로 크게 넘겨 오른손이 왼쪽 어깨 쪽으로 간다.
   rSX: -.58,
-  rSY: -.38,
-  rSZ: 1.38,
+  rSY: .38,
+  rSZ: -1.38,
 
-  // 팔꿈치를 깊게 접어 손/검을 어깨 가까이 끌어온다.
+  // 팔꿈치를 깊게 접어 손/검을 실제 화면 기준 왼쪽 어깨 가까이 끌어온다.
   rEX: -1.82,
   rEY: 0,
   rEZ: 0,
