@@ -252,8 +252,8 @@ let shake = 0;
 let elapsed = 0;
 
 const DASH_RECHARGE = 1.5;
-const DASH_DURATION = .22;
-const DASH_SPEED = 18.5;
+const DASH_DURATION = .16;
+const DASH_SPEED = 22.5;
 const IFRAME = .18;
 const gravity = 22;
 
@@ -345,10 +345,10 @@ function tryJump() {
 }
 
 const attackData = [
-  { duration: .34, hitAt: .16, damage: 10, range: 2.35, arc: 1.55, swing: [-1.1, .85] },
-  { duration: .34, hitAt: .16, damage: 12, range: 2.45, arc: 1.7, swing: [.9, -1.05] },
-  { duration: .38, hitAt: .18, damage: 14, range: 2.5, arc: 1.7, swing: [-.7, .8] },
-  { duration: .52, hitAt: .23, damage: 22, range: 3.15, arc: 2.55, swing: [-1.55, 1.55], finisher: true }
+  { duration: .48, hitAt: .28, damage: 10, range: 2.5, arc: 1.75, finisher: false },
+  { duration: .46, hitAt: .26, damage: 12, range: 2.55, arc: 1.85, finisher: false },
+  { duration: .58, hitAt: .34, damage: 14, range: 2.75, arc: 1.65, finisher: false },
+  { duration: .72, hitAt: .42, damage: 22, range: 3.25, arc: 2.75, finisher: true }
 ];
 
 function tryAttack() {
@@ -547,64 +547,87 @@ function dampRot(obj, x, y, z, speed, dt) {
   obj.rotation.z = damp(obj.rotation.z, z, speed, dt);
 }
 
-function attackPose(index, p) {
-  const prep = THREE.MathUtils.smoothstep(Math.min(p / .34, 1), 0, 1);
-  const strike = THREE.MathUtils.smoothstep(Math.max(0, (p - .22) / .48), 0, 1);
-  const recover = THREE.MathUtils.smoothstep(Math.max(0, (p - .72) / .28), 0, 1);
-  const blend = strike * (1 - recover);
+function phase(p, start, end) {
+  return THREE.MathUtils.smoothstep(THREE.MathUtils.clamp((p - start) / (end - start), 0, 1), 0, 1);
+}
 
-  let torsoY = 0;
-  let torsoZ = 0;
-  let shoulderX = -.3;
-  let shoulderY = 0;
-  let shoulderZ = -.15;
-  let elbowX = -.45;
-  let elbowZ = 0;
-  let wristZ = 0;
-  let leftX = .08;
-  let leftZ = .12;
+function keyed(neutral, windup, follow, wind, cut, recover) {
+  let v = THREE.MathUtils.lerp(neutral, windup, wind);
+  v = THREE.MathUtils.lerp(v, follow, cut);
+  return THREE.MathUtils.lerp(v, neutral, recover);
+}
+
+function attackPose(index, p) {
+  const wind = phase(p, 0, index === 3 ? .34 : .28);
+  const cut = phase(p, index === 3 ? .28 : .22, index === 3 ? .68 : .66);
+  const recover = phase(p, index === 3 ? .76 : .72, 1);
+
+  const n = {
+    hipY: 0,
+    torsoX: 0,
+    torsoY: 0,
+    torsoZ: 0,
+    shoulderX: -.08,
+    shoulderY: 0,
+    shoulderZ: -.08,
+    elbowX: -.18,
+    elbowZ: 0,
+    wristX: 0,
+    wristY: 0,
+    wristZ: 0,
+    leftX: .08,
+    leftY: 0,
+    leftZ: .08,
+    leftElbow: -.12
+  };
+
+  let w, h;
 
   if (index === 0) {
-    torsoY = THREE.MathUtils.lerp(-.22, .38, strike) * (1 - recover);
-    torsoZ = THREE.MathUtils.lerp(-.07, .06, strike) * (1 - recover);
-    shoulderX = THREE.MathUtils.lerp(-.8, -.2, strike);
-    shoulderY = THREE.MathUtils.lerp(-.62, .55, strike);
-    shoulderZ = THREE.MathUtils.lerp(-.35, -.78, blend);
-    elbowX = THREE.MathUtils.lerp(-.85, -.22, strike);
-    wristZ = THREE.MathUtils.lerp(-.18, .28, strike);
-    leftX = -.18;
+    // 1타: 오른쪽 위에서 왼쪽 아래로 크게 내려베기
+    w = { hipY: -.24, torsoX: -.04, torsoY: -.52, torsoZ: -.12,
+      shoulderX: .28, shoulderY: -.45, shoulderZ: -1.78,
+      elbowX: -.72, elbowZ: -.12, wristX: 0, wristY: 0, wristZ: -.28,
+      leftX: .34, leftY: .08, leftZ: .32, leftElbow: -.28 };
+    h = { hipY: .22, torsoX: .12, torsoY: .58, torsoZ: .14,
+      shoulderX: -.82, shoulderY: .62, shoulderZ: -.28,
+      elbowX: -.10, elbowZ: .12, wristX: 0, wristY: 0, wristZ: .42,
+      leftX: -.08, leftY: -.16, leftZ: .18, leftElbow: -.18 };
   } else if (index === 1) {
-    torsoY = THREE.MathUtils.lerp(.26, -.42, strike) * (1 - recover);
-    torsoZ = THREE.MathUtils.lerp(.05, -.05, strike) * (1 - recover);
-    shoulderX = THREE.MathUtils.lerp(-.35, -.72, strike);
-    shoulderY = THREE.MathUtils.lerp(.7, -.7, strike);
-    shoulderZ = THREE.MathUtils.lerp(-.7, -.28, strike);
-    elbowX = THREE.MathUtils.lerp(-.25, -.78, strike);
-    wristZ = THREE.MathUtils.lerp(.25, -.2, strike);
-    leftZ = .28;
+    // 2타: 왼쪽 아래에서 오른쪽 위로 역대각 올려베기
+    w = { hipY: .25, torsoX: .10, torsoY: .50, torsoZ: .14,
+      shoulderX: -.86, shoulderY: .62, shoulderZ: -.18,
+      elbowX: -.16, elbowZ: .10, wristX: 0, wristY: 0, wristZ: .35,
+      leftX: -.04, leftY: -.14, leftZ: .18, leftElbow: -.16 };
+    h = { hipY: -.24, torsoX: -.06, torsoY: -.58, torsoZ: -.16,
+      shoulderX: .12, shoulderY: -.66, shoulderZ: -2.10,
+      elbowX: -.62, elbowZ: -.12, wristX: 0, wristY: 0, wristZ: -.36,
+      leftX: .30, leftY: .12, leftZ: .34, leftElbow: -.30 };
   } else if (index === 2) {
-    torsoY = THREE.MathUtils.lerp(-.18, .22, strike) * (1 - recover);
-    torsoZ = -.04 * blend;
-    shoulderX = THREE.MathUtils.lerp(-1.18, -.25, strike);
-    shoulderY = THREE.MathUtils.lerp(-.18, .2, strike);
-    shoulderZ = THREE.MathUtils.lerp(-.35, -.2, strike);
-    elbowX = THREE.MathUtils.lerp(-1.05, -.1, strike);
-    wristZ = -.05;
-    leftX = -.28;
+    // 3타: 머리 위까지 크게 들어 올린 뒤 정면 내려찍기
+    w = { hipY: -.06, torsoX: -.16, torsoY: -.08, torsoZ: -.03,
+      shoulderX: .08, shoulderY: -.12, shoulderZ: -2.92,
+      elbowX: -.78, elbowZ: 0, wristX: 0, wristY: 0, wristZ: -.05,
+      leftX: .42, leftY: .18, leftZ: -.42, leftElbow: -.50 };
+    h = { hipY: .05, torsoX: .34, torsoY: .08, torsoZ: .02,
+      shoulderX: -1.02, shoulderY: .12, shoulderZ: -.08,
+      elbowX: -.04, elbowZ: 0, wristX: 0, wristY: 0, wristZ: .08,
+      leftX: -.18, leftY: -.12, leftZ: .32, leftElbow: -.22 };
   } else {
-    const wind = prep * (1 - strike);
-    torsoY = (-.68 * wind + .92 * strike) * (1 - recover);
-    torsoZ = .02 * blend;
-    shoulderX = THREE.MathUtils.lerp(-.52, -.2, strike);
-    shoulderY = THREE.MathUtils.lerp(-1.15, 1.15, strike);
-    shoulderZ = THREE.MathUtils.lerp(-.38, -.62, blend);
-    elbowX = THREE.MathUtils.lerp(-.42, -.08, strike);
-    wristZ = THREE.MathUtils.lerp(-.12, .12, strike);
-    leftX = -.34 * blend;
-    leftZ = .36 * blend;
+    // 4타: 몸 전체를 감아 돌리는 대형 횡베기 마무리
+    w = { hipY: -.72, torsoX: .10, torsoY: -.98, torsoZ: -.08,
+      shoulderX: -.88, shoulderY: -1.18, shoulderZ: -1.02,
+      elbowX: -.22, elbowZ: -.10, wristX: 0, wristY: 0, wristZ: -.18,
+      leftX: .55, leftY: .20, leftZ: .62, leftElbow: -.36 };
+    h = { hipY: .78, torsoX: .16, torsoY: 1.10, torsoZ: .10,
+      shoulderX: -.72, shoulderY: 1.28, shoulderZ: -.70,
+      elbowX: -.06, elbowZ: .12, wristX: 0, wristY: 0, wristZ: .22,
+      leftX: -.35, leftY: -.25, leftZ: -.52, leftElbow: -.22 };
   }
 
-  return { torsoY, torsoZ, shoulderX, shoulderY, shoulderZ, elbowX, elbowZ, wristZ, leftX, leftZ };
+  const out = {};
+  for (const k of Object.keys(n)) out[k] = keyed(n[k], w[k], h[k], wind, cut, recover);
+  return out;
 }
 
 function animateRig(dt, moving) {
@@ -616,7 +639,7 @@ function animateRig(dt, moving) {
   const bob = run ? Math.abs(Math.sin(cycle * .5)) * .045 : Math.sin(elapsed * 1.8) * .012;
 
   hipsRig.position.y = damp(hipsRig.position.y, 1.7 + bob, 10, dt);
-  hipsRig.rotation.y = damp(hipsRig.rotation.y, run ? step * .035 : 0, 10, dt);
+  if (!attack) hipsRig.rotation.y = damp(hipsRig.rotation.y, run ? step * .035 : 0, 10, dt);
   hipsRig.rotation.z = damp(hipsRig.rotation.z, run ? -step * .02 : 0, 10, dt);
 
   let torsoX = 0;
@@ -652,16 +675,26 @@ function animateRig(dt, moving) {
   }
 
   if (dashTime > 0) {
-    torsoX = -.48;
-    hipsRig.rotation.x = damp(hipsRig.rotation.x, -.12, 15, dt);
-    lTX = .28;
-    rTX = .28;
-    lKX = .55;
-    rKX = .55;
-    lSX = -.78;
-    rSX = -.72;
-    lEX = -.48;
-    rEX = -.62;
+    // 낮게 몸을 앞으로 던지는 질주형 대쉬. 팔은 뒤로 빼고 한쪽 다리는 앞으로 접는다.
+    torsoX = .46;
+    torsoY = 0;
+    torsoZ = 0;
+    hipsRig.position.y = damp(hipsRig.position.y, 1.58, 18, dt);
+    hipsRig.rotation.x = damp(hipsRig.rotation.x, .12, 18, dt);
+    lTX = -.55;
+    rTX = .42;
+    lKX = 1.02;
+    rKX = .30;
+    lAX = -.15;
+    rAX = .12;
+    lSX = .74;
+    rSX = .66;
+    lSY = -.08;
+    rSY = .10;
+    lSZ = .18;
+    rSZ = -.22;
+    lEX = -.24;
+    rEX = -.30;
   } else {
     hipsRig.rotation.x = damp(hipsRig.rotation.x, 0, 10, dt);
   }
@@ -669,6 +702,8 @@ function animateRig(dt, moving) {
   if (attack) {
     const p = Math.min(1, attack.t / attack.duration);
     const pose = attackPose(attack.index, p);
+    hipsRig.rotation.y = damp(hipsRig.rotation.y, pose.hipY, 18, dt);
+    torsoX = pose.torsoX;
     torsoY = pose.torsoY;
     torsoZ = pose.torsoZ;
     rSX = pose.shoulderX;
@@ -678,13 +713,20 @@ function animateRig(dt, moving) {
     rEZ = pose.elbowZ;
     rWZ = pose.wristZ;
     lSX = pose.leftX;
+    lSY = pose.leftY;
     lSZ = pose.leftZ;
+    lEX = pose.leftElbow;
 
-    if (attack.index === 3) {
-      lTX = -.18;
-      rTX = .14;
-      lKX = .15;
+    if (attack.index === 2) {
+      lTX = -.16;
+      rTX = .10;
+      lKX = .22;
       rKX = .08;
+    } else if (attack.index === 3) {
+      lTX = -.28;
+      rTX = .22;
+      lKX = .30;
+      rKX = .12;
     }
   }
 
