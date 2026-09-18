@@ -7,6 +7,8 @@ const playerHpEl = document.getElementById('player-hp');
 const dummyModeBtn = document.getElementById('dummy-mode');
 const autoBtn = document.getElementById('auto-btn');
 const lockBtn = document.getElementById('lock-btn');
+const weaponSwitchBtn = document.getElementById('weapon-switch');
+const attackBtn = document.getElementById('attack-btn');
 const skillDashSlashBtn = document.getElementById('skill-dash-slash');
 const skillSwordWaveBtn = document.getElementById('skill-sword-wave');
 const skillSpinBtn = document.getElementById('skill-spin');
@@ -220,6 +222,184 @@ leftArmRig.elbow.rotation.x = -.08;
 swordRoot.rotation.z = .03;
 const swordRestQuaternion = swordRoot.quaternion.clone();
 
+// 두 번째 장비: 코드로 만든 기본 활.
+// 활은 왼손에 고정하고, 오른손은 발사 모션에서 시위를 당기는 역할.
+const bowRoot = new THREE.Group();
+bowRoot.position.set(.02, -.12, .02);
+leftArmRig.hand.add(bowRoot);
+
+const bowWoodMat = new THREE.MeshStandardMaterial({ color: 0x7a4d2a, roughness: .78 });
+const bowGripMat = new THREE.MeshStandardMaterial({ color: 0x35271e, roughness: .88 });
+
+const bowCurve = new THREE.CatmullRomCurve3([
+  new THREE.Vector3(0, .78, 0),
+  new THREE.Vector3(.18, .52, 0),
+  new THREE.Vector3(.29, .18, 0),
+  new THREE.Vector3(.31, 0, 0),
+  new THREE.Vector3(.29, -.18, 0),
+  new THREE.Vector3(.18, -.52, 0),
+  new THREE.Vector3(0, -.78, 0)
+]);
+mesh(new THREE.TubeGeometry(bowCurve, 32, .035, 7, false), bowWoodMat, bowRoot, [0, 0, 0]);
+mesh(new THREE.BoxGeometry(.12, .30, .10), bowGripMat, bowRoot, [.30, 0, 0]);
+
+const bowStringGeo = new THREE.BufferGeometry().setFromPoints([
+  new THREE.Vector3(0, .78, 0),
+  new THREE.Vector3(.30, 0, 0),
+  new THREE.Vector3(0, -.78, 0)
+]);
+const bowString = new THREE.Line(
+  bowStringGeo,
+  new THREE.LineBasicMaterial({ color: 0xe8e0d2, transparent: true, opacity: .88 })
+);
+bowRoot.add(bowString);
+bowRoot.rotation.z = -.08;
+bowRoot.visible = false;
+
+let equippedWeapon = 'sword';
+let bowAttack = null;
+let bowAttackCooldown = 0;
+const arrows = [];
+const BOW_ATTACK_COOLDOWN = .58;
+const BOW_ATTACK_DAMAGE = 18;
+const BOW_ARROW_SPEED = 22;
+
+function updateEquipmentUI() {
+  const swordEquipped = equippedWeapon === 'sword';
+  swordRoot.visible = swordEquipped;
+  bowRoot.visible = !swordEquipped;
+
+  if (weaponSwitchBtn) {
+    weaponSwitchBtn.textContent = swordEquipped ? '장비: 장검' : '장비: 활';
+    weaponSwitchBtn.classList.toggle('bow-equipped', !swordEquipped);
+  }
+
+  if (attackBtn) attackBtn.textContent = swordEquipped ? 'ATK' : 'SHOT';
+  updateSkillUI();
+}
+
+function equipWeapon(type) {
+  if (type !== 'sword' && type !== 'bow') return;
+  if (type === equippedWeapon) return;
+  if (!playerAlive || skillAction || attack || bowAttack || dashTime > 0) return;
+
+  equippedWeapon = type;
+  comboNext = 0;
+  comboExpire = 0;
+  queuedAttack = false;
+
+  updateEquipmentUI();
+  showToast(type === 'sword' ? '장검 장착' : '활 장착');
+}
+
+function toggleWeapon() {
+  equipWeapon(equippedWeapon === 'sword' ? 'bow' : 'sword');
+}
+
+function getBowAimDirection() {
+  const origin = player.position.clone().add(new THREE.Vector3(0, 1.48, 0));
+
+  if (locked && dummyAlive) {
+    const target = dummy.position.clone().add(new THREE.Vector3(0, 1.05, 0));
+    return target.sub(origin).normalize();
+  }
+
+  return playerForward(new THREE.Vector3()).normalize();
+}
+
+function disposeArrow(helper) {
+  scene.remove(helper);
+  if (helper.line) {
+    helper.line.geometry.dispose();
+    helper.line.material.dispose();
+  }
+  if (helper.cone) {
+    helper.cone.geometry.dispose();
+    helper.cone.material.dispose();
+  }
+}
+
+function spawnArrow(dir) {
+  const origin = player.position.clone()
+    .add(new THREE.Vector3(0, 1.48, 0))
+    .addScaledVector(dir, .72);
+
+  const helper = new THREE.ArrowHelper(
+    dir,
+    origin,
+    1.55,
+    0xd9c08b,
+    .30,
+    .13
+  );
+  scene.add(helper);
+
+  arrows.push({
+    helper,
+    dir: dir.clone(),
+    life: 1.35,
+    hit: false
+  });
+}
+
+function tryBowAttack() {
+  if (equippedWeapon !== 'bow') return;
+  if (!playerAlive || skillAction || attack || bowAttack || dashTime > 0) return;
+  if (bowAttackCooldown > 0) return;
+
+  const dir = getBowAimDirection();
+  const flatDir = dir.clone().setY(0);
+  if (flatDir.lengthSq() > .001) {
+    flatDir.normalize();
+    playerYaw = Math.atan2(flatDir.x, flatDir.z);
+    player.rotation.y = playerYaw;
+  }
+
+  bowAttack = {
+    t: 0,
+    duration: .38,
+    fired: false,
+    dir
+  };
+  bowAttackCooldown = BOW_ATTACK_COOLDOWN;
+}
+
+function updateBowSystem(dt) {
+  bowAttackCooldown = Math.max(0, bowAttackCooldown - dt);
+
+  if (bowAttack) {
+    bowAttack.t += dt;
+
+    if (!bowAttack.fired && bowAttack.t >= .15) {
+      bowAttack.fired = true;
+      spawnArrow(bowAttack.dir);
+    }
+
+    if (bowAttack.t >= bowAttack.duration) {
+      bowAttack = null;
+    }
+  }
+
+  for (let i = arrows.length - 1; i >= 0; i--) {
+    const arrow = arrows[i];
+    arrow.life -= dt;
+    arrow.helper.position.addScaledVector(arrow.dir, BOW_ARROW_SPEED * dt);
+
+    if (!arrow.hit && dummyAlive) {
+      const target = dummy.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+      if (arrow.helper.position.distanceToSquared(target) <= .86 * .86) {
+        arrow.hit = true;
+        damageDummy(BOW_ATTACK_DAMAGE, false);
+      }
+    }
+
+    if (arrow.hit || arrow.life <= 0) {
+      disposeArrow(arrow.helper);
+      arrows.splice(i, 1);
+    }
+  }
+}
+
 // 아주 약한 대쉬 바람 이펙트: 캐릭터 뒤쪽에 짧은 반투명 속도선만 표시.
 const dashWind = new THREE.Group();
 player.add(dashWind);
@@ -413,18 +593,31 @@ let skillAction = null;
 const skillProjectiles = [];
 
 function updateSkillUI() {
+  const swordEquipped = equippedWeapon === 'sword';
+
   for (const [type, btn] of Object.entries(skillButtons)) {
     const left = Math.max(0, skillCooldowns[type]);
     const cd = btn.querySelector('.skill-cd');
     const cooling = left > .04;
+    const weaponLocked = !swordEquipped;
+
     btn.classList.toggle('cooling', cooling);
-    btn.disabled = cooling || !playerAlive;
-    if (cd) cd.textContent = cooling ? left.toFixed(1) : 'READY';
+    btn.classList.toggle('weapon-locked', weaponLocked);
+    btn.disabled = cooling || !playerAlive || weaponLocked;
+
+    if (cd) {
+      cd.textContent = weaponLocked
+        ? 'SWORD'
+        : cooling
+          ? left.toFixed(1)
+          : 'READY';
+    }
   }
 }
 
 function canStartSkill(type) {
-  if (!playerAlive || skillAction || attack || dashTime > 0) return false;
+  if (equippedWeapon !== 'sword') return false;
+  if (!playerAlive || skillAction || attack || bowAttack || dashTime > 0) return false;
   return skillCooldowns[type] <= 0;
 }
 
@@ -660,6 +853,7 @@ function respawnPlayer() {
   player.rotation.y = playerYaw;
   player.visible = true;
   skillAction = null;
+  bowAttack = null;
   velocityY = 0;
   grounded = true;
   invulnTime = .9;
@@ -669,7 +863,7 @@ function respawnPlayer() {
 
 updateDummyUI();
 updateDashUI();
-updateSkillUI();
+updateEquipmentUI();
 
 dummyModeBtn.addEventListener('click', () => {
   respawnGoblin(true);
@@ -700,12 +894,17 @@ lockBtn.addEventListener('pointerdown', e => {
   toggleLock();
 });
 
+weaponSwitchBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  toggleWeapon();
+});
+
 function playerForward(out = new THREE.Vector3()) {
   return out.set(Math.sin(playerYaw), 0, Math.cos(playerYaw));
 }
 
 function tryDash() {
-  if (!playerAlive || skillAction || dashCharges <= 0 || dashTime > 0) return;
+  if (!playerAlive || skillAction || bowAttack || dashCharges <= 0 || dashTime > 0) return;
   dashCharges--;
   updateDashUI();
   const m = getMoveVector();
@@ -716,7 +915,7 @@ function tryDash() {
 }
 
 function tryJump() {
-  if (!playerAlive || skillAction || !grounded) return;
+  if (!playerAlive || skillAction || bowAttack || !grounded) return;
   velocityY = 10.4;
   grounded = false;
 }
@@ -730,6 +929,12 @@ const attackData = [
 
 function tryAttack() {
   if (!playerAlive || skillAction) return;
+
+  if (equippedWeapon === 'bow') {
+    tryBowAttack();
+    return;
+  }
+
   const now = performance.now() / 1000;
   if (attack) {
     queuedAttack = true;
@@ -799,6 +1004,7 @@ function damagePlayer(amount) {
     playerRespawn = 1.8;
     player.visible = false;
     skillAction = null;
+    bowAttack = null;
     attack = null;
     queuedAttack = false;
     locked = false;
@@ -919,7 +1125,7 @@ function endCam(e) {
 camZone.addEventListener('pointerup', endCam);
 camZone.addEventListener('pointercancel', endCam);
 
-document.getElementById('attack-btn').addEventListener('pointerdown', e => {
+attackBtn.addEventListener('pointerdown', e => {
   e.preventDefault();
   tryAttack();
 });
@@ -961,6 +1167,7 @@ addEventListener('keydown', e => {
   if (e.code === 'Digit1') startSkill('dashSlash');
   if (e.code === 'Digit2') startSkill('swordWave');
   if (e.code === 'Digit3') startSkill('spinSlash');
+  if (e.code === 'KeyQ') toggleWeapon();
   if (e.code === 'KeyL') toggleLock();
   if (e.code === 'KeyC') toggleAutoCamera();
 });
@@ -1854,6 +2061,33 @@ function animateRig(dt, moving) {
   let headX = 0;
   let headY = 0;
 
+  if (equippedWeapon === 'bow' && dashTime <= 0 && !skillAction) {
+    const draw = bowAttack
+      ? Math.sin(THREE.MathUtils.clamp(bowAttack.t / bowAttack.duration, 0, 1) * Math.PI)
+      : 0;
+
+    // 왼팔은 활을 전방으로 뻗고, 오른팔은 얼굴 옆으로 시위를 당긴다.
+    lSX = -1.18;
+    lSY = .16;
+    lSZ = -.50;
+    lEX = -.10;
+    lEY = 0;
+    lEZ = 0;
+
+    rSX = -.82 - draw * .22;
+    rSY = .48 + draw * .34;
+    rSZ = .42 + draw * .20;
+    rEX = -.72 - draw * .78;
+    rEY = 0;
+    rEZ = 0;
+    rWX = -.08;
+    rWY = .10 + draw * .12;
+    rWZ = .08;
+
+    torsoY = draw * -.12;
+    headY = draw * .08;
+  }
+
   if (!grounded) {
     torsoX = -.08;
     lTX = -.34;
@@ -2260,6 +2494,7 @@ function frame(now) {
     return;
   }
 
+  updateBowSystem(dt);
   updatePlayer(dt);
   updateSkills(dt);
   updateDummy(dt);
