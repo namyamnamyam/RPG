@@ -583,10 +583,30 @@ function damp(current, target, speed, dt) {
   return THREE.MathUtils.lerp(current, target, 1 - Math.exp(-speed * dt));
 }
 
-function dampRot(obj, x, y, z, speed, dt) {
-  obj.rotation.x = damp(obj.rotation.x, x, speed, dt);
-  obj.rotation.y = damp(obj.rotation.y, y, speed, dt);
-  obj.rotation.z = damp(obj.rotation.z, z, speed, dt);
+function moveScalarToward(current, target, maxStep) {
+  const delta = target - current;
+  return current + THREE.MathUtils.clamp(delta, -maxStep, maxStep);
+}
+
+function dampAxisLimited(current, target, damping, maxRate, dt) {
+  const damped = damp(current, target, damping, dt);
+  return moveScalarToward(current, damped, maxRate * dt);
+}
+
+function dampRot(obj, x, y, z, speed, dt, maxRate = 7.2) {
+  obj.rotation.x = dampAxisLimited(obj.rotation.x, x, speed, maxRate, dt);
+  obj.rotation.y = dampAxisLimited(obj.rotation.y, y, speed, maxRate, dt);
+  obj.rotation.z = dampAxisLimited(obj.rotation.z, z, speed, maxRate, dt);
+}
+
+function rotateQuaternionToward(obj, targetQ, maxRate, dt) {
+  let angle = obj.quaternion.angleTo(targetQ);
+  if (!Number.isFinite(angle) || angle < 1e-5) {
+    obj.quaternion.copy(targetQ);
+    return;
+  }
+  const t = Math.min(1, (maxRate * dt) / angle);
+  obj.quaternion.slerp(targetQ, t);
 }
 
 function phase(p, start, end) {
@@ -698,7 +718,7 @@ function applyHumanJointLimits() {
   headRig.rotation.z = 0;
 }
 
-function solveTwoBoneArmIK(shoulderRig, elbowRig, wristRig, target, pole, side = 'right') {
+function solveTwoBoneArmIK(shoulderRig, elbowRig, wristRig, target, pole, side = 'right', dt = 1 / 60) {
   const upperLen = .72;
   const lowerLen = .66;
   const shoulderPos = shoulderRig.position.clone();
@@ -714,13 +734,11 @@ function solveTwoBoneArmIK(shoulderRig, elbowRig, wristRig, target, pole, side =
     upperLen + lowerLen - .04
   );
 
-  // 코사인 법칙으로 팔꿈치 위치를 정하되, 지정된 pole 쪽으로만 굽힌다.
   const a = (upperLen * upperLen - lowerLen * lowerLen + dist * dist) / (2 * dist);
   const h = Math.sqrt(Math.max(.0001, upperLen * upperLen - a * a));
 
   const poleVec = pole.clone().sub(shoulderPos);
   poleVec.addScaledVector(targetDir, -poleVec.dot(targetDir));
-
   if (poleVec.lengthSq() < .0001) {
     poleVec.set(side === 'right' ? -1 : 1, .2, .5);
   }
@@ -733,36 +751,49 @@ function solveTwoBoneArmIK(shoulderRig, elbowRig, wristRig, target, pole, side =
   const upperDir = elbowPos.clone().sub(shoulderPos).normalize();
   const lowerDir = target.clone().sub(elbowPos).normalize();
 
-  // 어깨의 roll까지 정해 팔꿈치가 한 축으로만 접혀도 목표 방향을 바라보게 한다.
   let bendNormal = new THREE.Vector3().crossVectors(upperDir, lowerDir);
   if (bendNormal.lengthSq() < .0001) {
     bendNormal = new THREE.Vector3().crossVectors(upperDir, poleVec);
   }
   bendNormal.normalize();
 
-  // local -Y가 위팔 방향. local X는 팔꿈치 힌지 축.
   const xAxis = bendNormal.clone().multiplyScalar(-1).normalize();
   const yAxis = upperDir.clone().multiplyScalar(-1).normalize();
   const zAxis = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
   xAxis.crossVectors(yAxis, zAxis).normalize();
 
   const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
-  shoulderRig.quaternion.setFromRotationMatrix(basis);
-  constrainShoulder(shoulderRig, side);
+  const shoulderTargetQ = new THREE.Quaternion().setFromRotationMatrix(basis);
 
-  // 팔꿈치는 순수 힌지. 옆 방향 회전은 0에 가깝게 강제.
+  // Temporarily apply only to clamp the desired shoulder pose to human limits.
+  const currentShoulderQ = shoulderRig.quaternion.clone();
+  shoulderRig.quaternion.copy(shoulderTargetQ);
+  constrainShoulder(shoulderRig, side);
+  shoulderTargetQ.copy(shoulderRig.quaternion);
+  shoulderRig.quaternion.copy(currentShoulderQ);
+
+  // No teleport: shoulder has a maximum angular velocity.
+  rotateQuaternionToward(shoulderRig, shoulderTargetQ, 6.4, dt);
+
   const bendAngle = Math.acos(
     THREE.MathUtils.clamp(upperDir.dot(lowerDir), -1, 1)
   );
-  elbowRig.rotation.set(
-    -THREE.MathUtils.clamp(bendAngle, 0, 2.53),
-    0,
-    0
+  const elbowTarget = -THREE.MathUtils.clamp(bendAngle, 0, 2.53);
+
+  // Elbow is a hinge and also has a maximum flex/extend speed.
+  elbowRig.rotation.x = moveScalarToward(
+    elbowRig.rotation.x,
+    elbowTarget,
+    7.4 * dt
   );
+  elbowRig.rotation.y = moveScalarToward(elbowRig.rotation.y, 0, 5.5 * dt);
+  elbowRig.rotation.z = moveScalarToward(elbowRig.rotation.z, 0, 5.5 * dt);
   constrainElbow(elbowRig);
 
-  // IK는 손목을 꺾어서 목표를 맞추지 않는다.
-  wristRig.rotation.set(0, 0, 0);
+  // IK never snaps/twists the wrist to cheat the reach.
+  wristRig.rotation.x = moveScalarToward(wristRig.rotation.x, 0, 6.0 * dt);
+  wristRig.rotation.y = moveScalarToward(wristRig.rotation.y, 0, 6.0 * dt);
+  wristRig.rotation.z = moveScalarToward(wristRig.rotation.z, 0, 6.0 * dt);
   constrainWrist(wristRig);
 }
 
@@ -839,7 +870,7 @@ function firstAttackIKFrame(p) {
   return { target, pole, hipY, torsoY, torsoX, torsoZ, swordForwardBlend };
 }
 
-function aimSwordTipForward(blend) {
+function aimSwordTipForward(blend, dt) {
   const parentWorldQ = new THREE.Quaternion();
   const playerWorldQ = new THREE.Quaternion();
   const desiredWorldQ = new THREE.Quaternion();
@@ -852,7 +883,6 @@ function aimSwordTipForward(blend) {
     .applyQuaternion(playerWorldQ)
     .normalize();
 
-  // 검날/검끝 축은 swordRoot 로컬 -Y 방향.
   desiredWorldQ.setFromUnitVectors(
     new THREE.Vector3(0, -1, 0),
     forwardWorld
@@ -863,9 +893,10 @@ function aimSwordTipForward(blend) {
     .invert()
     .multiply(desiredWorldQ);
 
-  swordRoot.quaternion
-    .copy(swordRestQuaternion)
+  const blendedTargetQ = swordRestQuaternion.clone()
     .slerp(desiredLocalQ, THREE.MathUtils.clamp(blend, 0, 1));
+
+  rotateQuaternionToward(swordRoot, blendedTargetQ, 10.0, dt);
 }
 
 function attackPose(index, p) {
@@ -998,6 +1029,177 @@ function attackPose(index, p) {
   const out = {};
   for (const k of Object.keys(n)) out[k] = keyed(n[k], w[k], h[k], wind, cut, recover);
   return out;
+}
+
+// ---------- Self collision ----------
+// Colliders live on solid body sections, not on the joints themselves.
+// Connected parts are ignored at their shared joint; non-connected parts may not penetrate.
+const collisionTrackedNodes = [
+  hipsRig, torsoRig, headRig,
+  rightArmRig.shoulder, rightArmRig.elbow, rightArmRig.wrist,
+  leftArmRig.shoulder, leftArmRig.elbow, leftArmRig.wrist,
+  rightLegRig.thigh, rightLegRig.knee, rightLegRig.ankle,
+  leftLegRig.thigh, leftLegRig.knee, leftLegRig.ankle,
+  swordRoot
+];
+
+let lastCollisionSafePose = null;
+
+function captureCollisionPose() {
+  return collisionTrackedNodes.map(node => node.quaternion.clone());
+}
+
+function restoreCollisionPose(pose) {
+  if (!pose) return;
+  for (let i = 0; i < collisionTrackedNodes.length; i++) {
+    collisionTrackedNodes[i].quaternion.copy(pose[i]);
+  }
+}
+
+function worldPoint(node, x, y, z) {
+  return node.localToWorld(new THREE.Vector3(x, y, z));
+}
+
+function bodyCapsule(name, node, a, b, radius, group) {
+  return {
+    name,
+    group,
+    a: worldPoint(node, a[0], a[1], a[2]),
+    b: worldPoint(node, b[0], b[1], b[2]),
+    radius
+  };
+}
+
+function segmentSegmentDistanceSq(p1, q1, p2, q2) {
+  const d1 = q1.clone().sub(p1);
+  const d2 = q2.clone().sub(p2);
+  const r = p1.clone().sub(p2);
+  const a = d1.dot(d1);
+  const e = d2.dot(d2);
+  const f = d2.dot(r);
+
+  let s;
+  let t;
+
+  if (a <= 1e-8 && e <= 1e-8) {
+    return p1.distanceToSquared(p2);
+  }
+
+  if (a <= 1e-8) {
+    s = 0;
+    t = THREE.MathUtils.clamp(f / e, 0, 1);
+  } else {
+    const c0 = d1.dot(r);
+    if (e <= 1e-8) {
+      t = 0;
+      s = THREE.MathUtils.clamp(-c0 / a, 0, 1);
+    } else {
+      const b0 = d1.dot(d2);
+      const denom = a * e - b0 * b0;
+      s = denom !== 0
+        ? THREE.MathUtils.clamp((b0 * f - c0 * e) / denom, 0, 1)
+        : 0;
+
+      t = (b0 * s + f) / e;
+
+      if (t < 0) {
+        t = 0;
+        s = THREE.MathUtils.clamp(-c0 / a, 0, 1);
+      } else if (t > 1) {
+        t = 1;
+        s = THREE.MathUtils.clamp((b0 - c0) / a, 0, 1);
+      }
+    }
+  }
+
+  const c1 = p1.clone().addScaledVector(d1, s);
+  const c2 = p2.clone().addScaledVector(d2, t);
+  return c1.distanceToSquared(c2);
+}
+
+function buildSelfCollisionCapsules() {
+  player.updateMatrixWorld(true);
+
+  return [
+    bodyCapsule('torso', torsoRig, [0,.20,0], [0,.90,0], .29, 'core'),
+    bodyCapsule('pelvis', hipsRig, [0,-.05,0], [0,.20,0], .30, 'core'),
+    bodyCapsule('head', headRig, [0,.10,0], [0,.43,0], .245, 'head'),
+
+    bodyCapsule('rUpper', rightArmRig.shoulder, [0,-.13,0], [0,-.59,0], .125, 'rArm'),
+    bodyCapsule('rFore', rightArmRig.elbow, [0,-.11,0], [0,-.54,0], .105, 'rArm'),
+    bodyCapsule('rHand', rightArmRig.hand, [0,-.01,0], [0,-.19,0], .095, 'rHand'),
+
+    bodyCapsule('lUpper', leftArmRig.shoulder, [0,-.13,0], [0,-.59,0], .125, 'lArm'),
+    bodyCapsule('lFore', leftArmRig.elbow, [0,-.11,0], [0,-.54,0], .105, 'lArm'),
+    bodyCapsule('lHand', leftArmRig.hand, [0,-.01,0], [0,-.19,0], .095, 'lHand'),
+
+    bodyCapsule('rThigh', rightLegRig.thigh, [0,-.14,0], [0,-.67,0], .155, 'rLeg'),
+    bodyCapsule('rShin', rightLegRig.knee, [0,-.12,0], [0,-.62,0], .135, 'rLeg'),
+    bodyCapsule('rFoot', rightLegRig.ankle, [0,.04,.02], [0,.04,.42], .125, 'rFoot'),
+
+    bodyCapsule('lThigh', leftLegRig.thigh, [0,-.14,0], [0,-.67,0], .155, 'lLeg'),
+    bodyCapsule('lShin', leftLegRig.knee, [0,-.12,0], [0,-.62,0], .135, 'lLeg'),
+    bodyCapsule('lFoot', leftLegRig.ankle, [0,.04,.02], [0,.04,.42], .125, 'lFoot'),
+
+    bodyCapsule('sword', swordRoot, [0,-.36,0], [0,-1.80,0], .045, 'sword')
+  ];
+}
+
+const SELF_COLLISION_IGNORES = new Set([
+  'head|torso',
+  'pelvis|torso',
+
+  'rUpper|torso', 'lUpper|torso',
+  'pelvis|rThigh', 'pelvis|lThigh',
+
+  'rFore|rUpper', 'rFore|rHand', 'rHand|rUpper',
+  'lFore|lUpper', 'lFore|lHand', 'lHand|lUpper',
+
+  'rShin|rThigh', 'rFoot|rShin', 'rFoot|rThigh',
+  'lShin|lThigh', 'lFoot|lShin', 'lFoot|lThigh',
+
+  // The weapon is physically attached at the right hand.
+  'rHand|sword'
+]);
+
+function collisionPairKey(a, b) {
+  return a.name < b.name ? `${a.name}|${b.name}` : `${b.name}|${a.name}`;
+}
+
+function hasSelfPenetration() {
+  const capsules = buildSelfCollisionCapsules();
+
+  for (let i = 0; i < capsules.length; i++) {
+    for (let j = i + 1; j < capsules.length; j++) {
+      const a = capsules[i];
+      const b = capsules[j];
+      const key = collisionPairKey(a, b);
+      if (SELF_COLLISION_IGNORES.has(key)) continue;
+
+      // A tiny tolerance allows surfaces to touch without vibrating.
+      const contact = Math.max(.01, a.radius + b.radius - .018);
+      if (segmentSegmentDistanceSq(a.a, a.b, b.a, b.b) < contact * contact) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+function enforceSelfCollision() {
+  if (!lastCollisionSafePose) {
+    lastCollisionSafePose = captureCollisionPose();
+    return;
+  }
+
+  if (hasSelfPenetration()) {
+    // No clipping and no teleport-through: reject this penetrating pose.
+    restoreCollisionPose(lastCollisionSafePose);
+    player.updateMatrixWorld(true);
+  } else {
+    lastCollisionSafePose = captureCollisionPose();
+  }
 }
 
 function animateRig(dt, moving) {
@@ -1153,20 +1355,18 @@ function animateRig(dt, moving) {
       rightArmRig.wrist,
       firstIK.target,
       firstIK.pole,
-      'right'
+      'right',
+      dt
     );
 
     // 중간 타격 순간: 검끝이 캐릭터 정면, 즉 적 방향을 정확히 향한다.
-    aimSwordTipForward(firstIK.swordForwardBlend);
+    aimSwordTipForward(firstIK.swordForwardBlend, dt);
   } else {
     dampRot(rightArmRig.shoulder, rSX, rSY, rSZ, speed, dt);
     dampRot(rightArmRig.elbow, rEX, rEY, rEZ, speed + 2, dt);
     dampRot(rightArmRig.wrist, rWX, rWY, rWZ, speed + 3, dt);
 
-    swordRoot.quaternion.slerp(
-      swordRestQuaternion,
-      1 - Math.exp(-18 * dt)
-    );
+    rotateQuaternionToward(swordRoot, swordRestQuaternion, 10.0, dt);
   }
 
   dampRot(leftArmRig.shoulder, lSX, lSY, lSZ, speed, dt);
@@ -1185,6 +1385,9 @@ function animateRig(dt, moving) {
 
   // 어떤 애니메이션/IK도 이 선을 넘어 인간 관절 범위를 벗어날 수 없다.
   applyHumanJointLimits();
+
+  // 관절 사이의 실제 신체/무기 부위는 서로 관통할 수 없다.
+  enforceSelfCollision();
 }
 function updatePlayer(dt) {
   elapsed += dt;
