@@ -1032,27 +1032,39 @@ function attackPose(index, p) {
 }
 
 // ---------- Self collision ----------
-// Colliders live on solid body sections, not on the joints themselves.
-// Connected parts are ignored at their shared joint; non-connected parts may not penetrate.
-const collisionTrackedNodes = [
-  hipsRig, torsoRig, headRig,
-  rightArmRig.shoulder, rightArmRig.elbow, rightArmRig.wrist,
-  leftArmRig.shoulder, leftArmRig.elbow, leftArmRig.wrist,
-  rightLegRig.thigh, rightLegRig.knee, rightLegRig.ankle,
-  leftLegRig.thigh, leftLegRig.knee, leftLegRig.ankle,
-  swordRoot
-];
+// 전신 전체 롤백 대신, 새로 생긴 관통이 있는 사지 체인만 되돌린다.
+// 기본 자세에서 원래 맞닿아 있는 부분은 첫 프레임에 기준 접촉으로 등록한다.
+const collisionChains = {
+  rightArm: [rightArmRig.shoulder, rightArmRig.elbow, rightArmRig.wrist, swordRoot],
+  leftArm: [leftArmRig.shoulder, leftArmRig.elbow, leftArmRig.wrist],
+  rightLeg: [rightLegRig.thigh, rightLegRig.knee, rightLegRig.ankle],
+  leftLeg: [leftLegRig.thigh, leftLegRig.knee, leftLegRig.ankle]
+};
 
-let lastCollisionSafePose = null;
+const safeChainPose = {
+  rightArm: null,
+  leftArm: null,
+  rightLeg: null,
+  leftLeg: null
+};
 
-function captureCollisionPose() {
-  return collisionTrackedNodes.map(node => node.quaternion.clone());
+let baselineCollisionPairs = null;
+
+function captureChain(chainName) {
+  return collisionChains[chainName].map(node => node.quaternion.clone());
 }
 
-function restoreCollisionPose(pose) {
+function restoreChain(chainName, pose) {
   if (!pose) return;
-  for (let i = 0; i < collisionTrackedNodes.length; i++) {
-    collisionTrackedNodes[i].quaternion.copy(pose[i]);
+  const nodes = collisionChains[chainName];
+  for (let i = 0; i < nodes.length; i++) {
+    nodes[i].quaternion.copy(pose[i]);
+  }
+}
+
+function refreshSafeChains() {
+  for (const chainName of Object.keys(collisionChains)) {
+    safeChainPose[chainName] = captureChain(chainName);
   }
 }
 
@@ -1060,10 +1072,10 @@ function worldPoint(node, x, y, z) {
   return node.localToWorld(new THREE.Vector3(x, y, z));
 }
 
-function bodyCapsule(name, node, a, b, radius, group) {
+function bodyCapsule(name, node, a, b, radius, chain = null) {
   return {
     name,
-    group,
+    chain,
     a: worldPoint(node, a[0], a[1], a[2]),
     b: worldPoint(node, b[0], b[1], b[2]),
     radius
@@ -1081,21 +1093,21 @@ function segmentSegmentDistanceSq(p1, q1, p2, q2) {
   let s;
   let t;
 
-  if (a <= 1e-8 && e <= 1e-8) {
-    return p1.distanceToSquared(p2);
-  }
+  if (a <= 1e-8 && e <= 1e-8) return p1.distanceToSquared(p2);
 
   if (a <= 1e-8) {
     s = 0;
     t = THREE.MathUtils.clamp(f / e, 0, 1);
   } else {
     const c0 = d1.dot(r);
+
     if (e <= 1e-8) {
       t = 0;
       s = THREE.MathUtils.clamp(-c0 / a, 0, 1);
     } else {
       const b0 = d1.dot(d2);
       const denom = a * e - b0 * b0;
+
       s = denom !== 0
         ? THREE.MathUtils.clamp((b0 * f - c0 * e) / denom, 0, 1)
         : 0;
@@ -1121,27 +1133,28 @@ function buildSelfCollisionCapsules() {
   player.updateMatrixWorld(true);
 
   return [
-    bodyCapsule('torso', torsoRig, [0,.20,0], [0,.90,0], .29, 'core'),
-    bodyCapsule('pelvis', hipsRig, [0,-.05,0], [0,.20,0], .30, 'core'),
-    bodyCapsule('head', headRig, [0,.10,0], [0,.43,0], .245, 'head'),
+    // 몸통/골반은 실제 메시보다 약간 얇게 잡아 "스침"을 관통으로 오인하지 않게 한다.
+    bodyCapsule('torso', torsoRig, [0,.24,0], [0,.86,0], .235),
+    bodyCapsule('pelvis', hipsRig, [0,-.03,0], [0,.18,0], .245),
+    bodyCapsule('head', headRig, [0,.13,0], [0,.40,0], .215),
 
-    bodyCapsule('rUpper', rightArmRig.shoulder, [0,-.13,0], [0,-.59,0], .125, 'rArm'),
-    bodyCapsule('rFore', rightArmRig.elbow, [0,-.11,0], [0,-.54,0], .105, 'rArm'),
-    bodyCapsule('rHand', rightArmRig.hand, [0,-.01,0], [0,-.19,0], .095, 'rHand'),
+    bodyCapsule('rUpper', rightArmRig.shoulder, [0,-.17,0], [0,-.57,0], .095, 'rightArm'),
+    bodyCapsule('rFore', rightArmRig.elbow, [0,-.14,0], [0,-.52,0], .085, 'rightArm'),
+    bodyCapsule('rHand', rightArmRig.hand, [0,-.03,0], [0,-.17,0], .075, 'rightArm'),
 
-    bodyCapsule('lUpper', leftArmRig.shoulder, [0,-.13,0], [0,-.59,0], .125, 'lArm'),
-    bodyCapsule('lFore', leftArmRig.elbow, [0,-.11,0], [0,-.54,0], .105, 'lArm'),
-    bodyCapsule('lHand', leftArmRig.hand, [0,-.01,0], [0,-.19,0], .095, 'lHand'),
+    bodyCapsule('lUpper', leftArmRig.shoulder, [0,-.17,0], [0,-.57,0], .095, 'leftArm'),
+    bodyCapsule('lFore', leftArmRig.elbow, [0,-.14,0], [0,-.52,0], .085, 'leftArm'),
+    bodyCapsule('lHand', leftArmRig.hand, [0,-.03,0], [0,-.17,0], .075, 'leftArm'),
 
-    bodyCapsule('rThigh', rightLegRig.thigh, [0,-.14,0], [0,-.67,0], .155, 'rLeg'),
-    bodyCapsule('rShin', rightLegRig.knee, [0,-.12,0], [0,-.62,0], .135, 'rLeg'),
-    bodyCapsule('rFoot', rightLegRig.ankle, [0,.04,.02], [0,.04,.42], .125, 'rFoot'),
+    bodyCapsule('rThigh', rightLegRig.thigh, [0,-.18,0], [0,-.63,0], .125, 'rightLeg'),
+    bodyCapsule('rShin', rightLegRig.knee, [0,-.15,0], [0,-.58,0], .110, 'rightLeg'),
+    bodyCapsule('rFoot', rightLegRig.ankle, [0,.04,.06], [0,.04,.38], .105, 'rightLeg'),
 
-    bodyCapsule('lThigh', leftLegRig.thigh, [0,-.14,0], [0,-.67,0], .155, 'lLeg'),
-    bodyCapsule('lShin', leftLegRig.knee, [0,-.12,0], [0,-.62,0], .135, 'lLeg'),
-    bodyCapsule('lFoot', leftLegRig.ankle, [0,.04,.02], [0,.04,.42], .125, 'lFoot'),
+    bodyCapsule('lThigh', leftLegRig.thigh, [0,-.18,0], [0,-.63,0], .125, 'leftLeg'),
+    bodyCapsule('lShin', leftLegRig.knee, [0,-.15,0], [0,-.58,0], .110, 'leftLeg'),
+    bodyCapsule('lFoot', leftLegRig.ankle, [0,.04,.06], [0,.04,.38], .105, 'leftLeg'),
 
-    bodyCapsule('sword', swordRoot, [0,-.36,0], [0,-1.80,0], .045, 'sword')
+    bodyCapsule('sword', swordRoot, [0,-.42,0], [0,-1.76,0], .032, 'rightArm')
   ];
 }
 
@@ -1149,25 +1162,27 @@ const SELF_COLLISION_IGNORES = new Set([
   'head|torso',
   'pelvis|torso',
 
+  // 몸에 정상적으로 붙어 있는 뿌리 부위.
   'rUpper|torso', 'lUpper|torso',
   'pelvis|rThigh', 'pelvis|lThigh',
 
+  // 같은 사지의 연결된 부위.
   'rFore|rUpper', 'rFore|rHand', 'rHand|rUpper',
   'lFore|lUpper', 'lFore|lHand', 'lHand|lUpper',
-
   'rShin|rThigh', 'rFoot|rShin', 'rFoot|rThigh',
   'lShin|lThigh', 'lFoot|lShin', 'lFoot|lThigh',
 
-  // The weapon is physically attached at the right hand.
-  'rHand|sword'
+  // 검은 오른손에 붙어 있으므로 손/전완 주변 접촉은 정상.
+  'rHand|sword', 'rFore|sword'
 ]);
 
 function collisionPairKey(a, b) {
   return a.name < b.name ? `${a.name}|${b.name}` : `${b.name}|${a.name}`;
 }
 
-function hasSelfPenetration() {
+function currentPenetrations() {
   const capsules = buildSelfCollisionCapsules();
+  const hits = [];
 
   for (let i = 0; i < capsules.length; i++) {
     for (let j = i + 1; j < capsules.length; j++) {
@@ -1176,31 +1191,73 @@ function hasSelfPenetration() {
       const key = collisionPairKey(a, b);
       if (SELF_COLLISION_IGNORES.has(key)) continue;
 
-      // A tiny tolerance allows surfaces to touch without vibrating.
-      const contact = Math.max(.01, a.radius + b.radius - .018);
+      // 접촉은 허용, 실제로 꽤 들어갔을 때만 관통으로 판정.
+      const contact = Math.max(.01, a.radius + b.radius - .045);
+
       if (segmentSegmentDistanceSq(a.a, a.b, b.a, b.b) < contact * contact) {
-        return true;
+        hits.push({ key, a, b });
       }
     }
   }
 
-  return false;
+  return hits;
+}
+
+function chainsFromHit(hit) {
+  const chains = new Set();
+
+  if (hit.a.chain) chains.add(hit.a.chain);
+  if (hit.b.chain) chains.add(hit.b.chain);
+
+  // 몸통/머리/골반과 부딪힌 경우에는 움직이는 사지 쪽만 되돌린다.
+  return chains;
 }
 
 function enforceSelfCollision() {
-  if (!lastCollisionSafePose) {
-    lastCollisionSafePose = captureCollisionPose();
+  const hits = currentPenetrations();
+
+  if (baselineCollisionPairs === null) {
+    baselineCollisionPairs = new Set(hits.map(hit => hit.key));
+    refreshSafeChains();
     return;
   }
 
-  if (hasSelfPenetration()) {
-    // No clipping and no teleport-through: reject this penetrating pose.
-    restoreCollisionPose(lastCollisionSafePose);
-    player.updateMatrixWorld(true);
-  } else {
-    lastCollisionSafePose = captureCollisionPose();
+  const newHits = hits.filter(hit => !baselineCollisionPairs.has(hit.key));
+
+  if (newHits.length === 0) {
+    refreshSafeChains();
+    return;
+  }
+
+  const blockedChains = new Set();
+
+  for (const hit of newHits) {
+    for (const chain of chainsFromHit(hit)) blockedChains.add(chain);
+  }
+
+  // 전신 애니메이션은 계속 진행하고, 실제 관통을 만든 사지만 직전 안전 포즈로 되돌린다.
+  for (const chain of blockedChains) {
+    restoreChain(chain, safeChainPose[chain]);
+  }
+
+  player.updateMatrixWorld(true);
+
+  // 되돌린 뒤 안전한 체인들은 다시 현재 포즈를 저장한다.
+  const remainingHits = currentPenetrations()
+    .filter(hit => !baselineCollisionPairs.has(hit.key));
+
+  const stillBlocked = new Set();
+  for (const hit of remainingHits) {
+    for (const chain of chainsFromHit(hit)) stillBlocked.add(chain);
+  }
+
+  for (const chainName of Object.keys(collisionChains)) {
+    if (!stillBlocked.has(chainName)) {
+      safeChainPose[chainName] = captureChain(chainName);
+    }
   }
 }
+
 
 function animateRig(dt, moving) {
   const speed = 15;
