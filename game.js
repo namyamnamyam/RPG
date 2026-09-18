@@ -601,91 +601,134 @@ const IFRAME = .18;
 const gravity = 22;
 
 const skillDefs = {
-  dashSlash: { name: '돌진베기', cooldown: 3.2, duration: .56 },
-  swordWave: { name: '검기', cooldown: 4.2, duration: .52 },
-  spinSlash: { name: '회전격', cooldown: 5.6, duration: .72 }
+  // 장검
+  dashSlash:  { weapon: 'sword', name: '돌진베기', cooldown: 3.2, duration: .56 },
+  swordWave:  { weapon: 'sword', name: '검기', cooldown: 4.2, duration: .52 },
+  spinSlash:  { weapon: 'sword', name: '회전격', cooldown: 5.6, duration: .72 },
+
+  // 활
+  rapidFire:  { weapon: 'bow', name: '난사', cooldown: 4.6, duration: 1.05 },
+  powerShot:  { weapon: 'bow', name: '파워샷', cooldown: 5.2, duration: .82 },
+  arrowRain:  { weapon: 'bow', name: '화살비', cooldown: 7.5, duration: 1.35 },
+
+  // 지팡이
+  fireball:   { weapon: 'staff', name: '파이어볼', cooldown: 4.8, duration: .66 },
+  fireArrow:  { weapon: 'staff', name: '파이어 애로우', cooldown: 3.3, duration: .48 },
+  fireWall:   { weapon: 'staff', name: '파이어 월', cooldown: 7.0, duration: .74 }
 };
 
-const skillCooldowns = {
-  dashSlash: 0,
-  swordWave: 0,
-  spinSlash: 0
+const weaponSkillSlots = {
+  sword: ['dashSlash', 'swordWave', 'spinSlash'],
+  bow: ['rapidFire', 'powerShot', 'arrowRain'],
+  staff: ['fireball', 'fireArrow', 'fireWall']
 };
 
-const skillButtons = {
-  dashSlash: skillDashSlashBtn,
-  swordWave: skillSwordWaveBtn,
-  spinSlash: skillSpinBtn
-};
+const skillCooldowns = Object.fromEntries(
+  Object.keys(skillDefs).map(key => [key, 0])
+);
+
+const skillButtons = [
+  skillDashSlashBtn,
+  skillSwordWaveBtn,
+  skillSpinBtn
+];
 
 let skillAction = null;
 const skillProjectiles = [];
+const skillAreas = [];
+
+function currentSkillKey(slot) {
+  return weaponSkillSlots[equippedWeapon]?.[slot] || null;
+}
 
 function updateSkillUI() {
-  const swordEquipped = equippedWeapon === 'sword';
+  const slots = weaponSkillSlots[equippedWeapon] || [];
 
-  for (const [type, btn] of Object.entries(skillButtons)) {
-    const left = Math.max(0, skillCooldowns[type]);
+  skillButtons.forEach((btn, slot) => {
+    const type = slots[slot];
+    const def = skillDefs[type];
+    if (!def) return;
+
+    const label = btn.querySelector('span');
     const cd = btn.querySelector('.skill-cd');
+    const left = Math.max(0, skillCooldowns[type]);
     const cooling = left > .04;
-    const weaponLocked = !swordEquipped;
 
+    if (label) label.textContent = def.name;
     btn.classList.toggle('cooling', cooling);
-    btn.classList.toggle('weapon-locked', weaponLocked);
-    btn.disabled = cooling || !playerAlive || weaponLocked;
+    btn.classList.remove('weapon-locked');
+    btn.disabled = cooling || !playerAlive;
 
-    if (cd) {
-      cd.textContent = weaponLocked
-        ? 'SWORD'
-        : cooling
-          ? left.toFixed(1)
-          : 'READY';
-    }
-  }
+    if (cd) cd.textContent = cooling ? left.toFixed(1) : 'READY';
+  });
 }
 
 function canStartSkill(type) {
-  if (equippedWeapon !== 'sword') return false;
-  if (!playerAlive || skillAction || attack || bowAttack || dashTime > 0) return false;
+  const def = skillDefs[type];
+  if (!def || def.weapon !== equippedWeapon) return false;
+  if (!playerAlive || skillAction || attack || bowAttack || staffAttack || dashTime > 0) return false;
   return skillCooldowns[type] <= 0;
+}
+
+function skillAimDirection(originY = 1.35) {
+  const origin = player.position.clone().add(new THREE.Vector3(0, originY, 0));
+
+  if (dummyAlive && locked) {
+    return dummy.position.clone()
+      .add(new THREE.Vector3(0, 1.0, 0))
+      .sub(origin)
+      .normalize();
+  }
+
+  return playerForward(new THREE.Vector3()).normalize();
 }
 
 function startSkill(type) {
   if (!canStartSkill(type)) return;
 
   const def = skillDefs[type];
-  let dir = playerForward(new THREE.Vector3()).normalize();
-
-  // 락온 상태에서는 돌진/검기를 고블린 방향에 맞춘다.
-  if (dummyAlive && locked && type !== 'spinSlash') {
-    const toTarget = dummy.position.clone().sub(player.position).setY(0);
-    if (toTarget.lengthSq() > .001) dir.copy(toTarget.normalize());
-  }
-
-  const baseYaw = Math.atan2(dir.x, dir.z);
-  if (type !== 'spinSlash') {
-    playerYaw = baseYaw;
+  const dir = skillAimDirection();
+  const flatDir = dir.clone().setY(0);
+  if (flatDir.lengthSq() > .001) {
+    flatDir.normalize();
+    playerYaw = Math.atan2(flatDir.x, flatDir.z);
     player.rotation.y = playerYaw;
   }
 
+  const forwardPoint = player.position.clone()
+    .addScaledVector(flatDir.lengthSq() > .001 ? flatDir : playerForward(new THREE.Vector3()), 5.2);
+
   skillAction = {
     type,
+    weapon: def.weapon,
     t: 0,
     duration: def.duration,
     hit: false,
     spawned: false,
+    count: 0,
+    nextShot: 0,
     dir,
-    baseYaw: playerYaw
+    baseYaw: playerYaw,
+    targetPoint: dummyAlive && locked
+      ? dummy.position.clone()
+      : forwardPoint
   };
 
   skillCooldowns[type] = def.cooldown;
   attack = null;
+  bowAttack = null;
+  staffAttack = null;
   queuedAttack = false;
   comboNext = 0;
   comboExpire = 0;
 
   showToast(def.name);
   updateSkillUI();
+}
+
+function startSkillSlot(slot) {
+  const type = currentSkillKey(slot);
+  if (type) startSkill(type);
 }
 
 function hitEnemyCone(range, arc, damage, finisher = false) {
@@ -702,6 +745,56 @@ function hitEnemyCone(range, arc, damage, finisher = false) {
 
   damageDummy(damage, finisher);
   return true;
+}
+
+function disposeArrowHelper(helper) {
+  scene.remove(helper);
+  if (helper.line) {
+    helper.line.geometry.dispose();
+    helper.line.material.dispose();
+  }
+  if (helper.cone) {
+    helper.cone.geometry.dispose();
+    helper.cone.material.dispose();
+  }
+}
+
+function spawnSkillArrow(dir, options = {}) {
+  const {
+    speed = 22,
+    damage = 12,
+    color = 0xd9c08b,
+    scale = 1,
+    life = 1.25,
+    finisher = false,
+    origin = null
+  } = options;
+
+  const start = origin || player.position.clone()
+    .add(new THREE.Vector3(0, 1.48, 0))
+    .addScaledVector(dir, .72);
+
+  const helper = new THREE.ArrowHelper(
+    dir,
+    start,
+    1.45 * scale,
+    color,
+    .28 * scale,
+    .12 * scale
+  );
+  scene.add(helper);
+
+  skillProjectiles.push({
+    kind: 'arrow',
+    object: helper,
+    dir: dir.clone(),
+    speed,
+    damage,
+    life,
+    hit: false,
+    finisher,
+    radius: .88
+  });
 }
 
 function spawnSwordWave(dir) {
@@ -725,38 +818,259 @@ function spawnSwordWave(dir) {
   scene.add(wave);
 
   skillProjectiles.push({
-    mesh: wave,
+    kind: 'swordWave',
+    object: wave,
     dir: dir.clone(),
     life: .86,
-    maxLife: .86,
     speed: 16.5,
-    hit: false
+    damage: 22,
+    hit: false,
+    radius: 1.05
   });
 }
 
-function updateSwordWaves(dt) {
-  for (let i = skillProjectiles.length - 1; i >= 0; i--) {
-    const wave = skillProjectiles[i];
-    wave.life -= dt;
-    wave.mesh.position.addScaledVector(wave.dir, wave.speed * dt);
-    wave.mesh.rotation.z -= dt * 4.5;
-    wave.mesh.material.opacity = .82 * THREE.MathUtils.clamp(wave.life / .24, 0, 1);
+function spawnFireball(dir) {
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xff7a24,
+    emissive: 0xff3b0a,
+    emissiveIntensity: 2.4,
+    roughness: .42
+  });
+  const ball = new THREE.Mesh(new THREE.SphereGeometry(.34, 14, 10), mat);
+  ball.position.copy(player.position)
+    .add(new THREE.Vector3(0, 1.48, 0))
+    .addScaledVector(dir, .85);
+  scene.add(ball);
 
-    if (!wave.hit && dummyAlive) {
-      const dx = dummy.position.x - wave.mesh.position.x;
-      const dz = dummy.position.z - wave.mesh.position.z;
-      const dy = (dummy.position.y + 1.05) - wave.mesh.position.y;
-      if (dx * dx + dz * dz < 1.05 * 1.05 && Math.abs(dy) < 1.35) {
-        wave.hit = true;
-        damageDummy(22, false);
+  skillProjectiles.push({
+    kind: 'fireball',
+    object: ball,
+    dir: dir.clone(),
+    life: 1.55,
+    speed: 11.5,
+    damage: 34,
+    hit: false,
+    radius: .78,
+    blastRadius: 2.25
+  });
+}
+
+function spawnFireArrow(dir, damage = 24) {
+  spawnSkillArrow(dir, {
+    speed: 27,
+    damage,
+    color: 0xff6a28,
+    scale: 1.05,
+    life: 1.15
+  });
+}
+
+function explodeFireball(projectile) {
+  const pos = projectile.object.position.clone();
+  const flash = new THREE.Mesh(
+    new THREE.SphereGeometry(1, 16, 10),
+    new THREE.MeshBasicMaterial({
+      color: 0xff792b,
+      transparent: true,
+      opacity: .42,
+      depthWrite: false
+    })
+  );
+  flash.position.copy(pos);
+  flash.scale.setScalar(.35);
+  scene.add(flash);
+
+  skillAreas.push({
+    kind: 'explosionVfx',
+    object: flash,
+    life: .28,
+    maxLife: .28
+  });
+
+  if (dummyAlive && dummy.position.clone().add(new THREE.Vector3(0, 1, 0)).distanceTo(pos) <= projectile.blastRadius) {
+    damageDummy(projectile.damage, true);
+  }
+}
+
+function spawnArrowRain(targetPoint) {
+  const center = targetPoint.clone();
+  center.y = 0;
+
+  // 바닥에 공격 범위 표시.
+  const ring = new THREE.Mesh(
+    new THREE.RingGeometry(1.85, 2.05, 40),
+    new THREE.MeshBasicMaterial({
+      color: 0xffd36b,
+      transparent: true,
+      opacity: .36,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.copy(center).add(new THREE.Vector3(0, .035, 0));
+  scene.add(ring);
+
+  skillAreas.push({
+    kind: 'rainZone',
+    object: ring,
+    center,
+    life: 1.35,
+    maxLife: 1.35,
+    nextArrow: 0,
+    arrowCount: 0
+  });
+}
+
+function spawnFireWall(targetPoint, dir) {
+  const center = targetPoint.clone().setY(.55);
+  const right = new THREE.Vector3(-dir.z, 0, dir.x).normalize();
+
+  const group = new THREE.Group();
+  group.position.copy(center);
+  scene.add(group);
+
+  for (let i = -3; i <= 3; i++) {
+    const flame = new THREE.Mesh(
+      new THREE.ConeGeometry(.30, 1.35 + (Math.abs(i) % 2) * .25, 8),
+      new THREE.MeshStandardMaterial({
+        color: 0xff7c24,
+        emissive: 0xff3000,
+        emissiveIntensity: 1.8,
+        transparent: true,
+        opacity: .78,
+        roughness: .55
+      })
+    );
+    flame.position.copy(right).multiplyScalar(i * .58);
+    flame.position.y = .35;
+    group.add(flame);
+  }
+
+  skillAreas.push({
+    kind: 'fireWall',
+    object: group,
+    center: targetPoint.clone().setY(0),
+    right,
+    life: 3.0,
+    maxLife: 3.0,
+    tick: 0
+  });
+}
+
+function disposeSkillProjectile(projectile) {
+  const obj = projectile.object;
+  if (projectile.kind === 'arrow') {
+    disposeArrowHelper(obj);
+    return;
+  }
+  scene.remove(obj);
+  obj.geometry?.dispose?.();
+  if (Array.isArray(obj.material)) obj.material.forEach(m => m.dispose?.());
+  else obj.material?.dispose?.();
+}
+
+function updateSkillProjectiles(dt) {
+  for (let i = skillProjectiles.length - 1; i >= 0; i--) {
+    const p = skillProjectiles[i];
+    p.life -= dt;
+    p.object.position.addScaledVector(p.dir, p.speed * dt);
+
+    if (p.kind === 'swordWave') {
+      p.object.rotation.z -= dt * 4.5;
+      p.object.material.opacity = .82 * THREE.MathUtils.clamp(p.life / .24, 0, 1);
+    } else if (p.kind === 'fireball') {
+      p.object.scale.setScalar(1 + Math.sin(elapsed * 24) * .10);
+    }
+
+    if (!p.hit && dummyAlive) {
+      const target = dummy.position.clone().add(new THREE.Vector3(0, 1.0, 0));
+      if (p.object.position.distanceToSquared(target) <= p.radius * p.radius) {
+        p.hit = true;
+
+        if (p.kind === 'fireball') {
+          explodeFireball(p);
+        } else {
+          damageDummy(p.damage, p.finisher || false);
+        }
       }
     }
 
-    if (wave.life <= 0) {
-      scene.remove(wave.mesh);
-      wave.mesh.geometry.dispose();
-      wave.mesh.material.dispose();
+    if (p.kind === 'fireball' && p.life <= 0 && !p.hit) {
+      p.hit = true;
+      explodeFireball(p);
+    }
+
+    if (p.hit || p.life <= 0) {
+      disposeSkillProjectile(p);
       skillProjectiles.splice(i, 1);
+    }
+  }
+}
+
+function updateSkillAreas(dt) {
+  for (let i = skillAreas.length - 1; i >= 0; i--) {
+    const a = skillAreas[i];
+    a.life -= dt;
+
+    if (a.kind === 'explosionVfx') {
+      const t = 1 - a.life / a.maxLife;
+      a.object.scale.setScalar(.35 + t * 2.4);
+      a.object.material.opacity = .42 * (1 - t);
+    } else if (a.kind === 'rainZone') {
+      a.object.material.opacity = .22 + Math.sin(elapsed * 14) * .08;
+      a.nextArrow -= dt;
+
+      if (a.arrowCount < 8 && a.nextArrow <= 0) {
+        a.nextArrow = .12;
+        a.arrowCount++;
+
+        const ang = a.arrowCount * 2.399;
+        const rad = (a.arrowCount % 3) * .58;
+        const origin = a.center.clone().add(new THREE.Vector3(
+          Math.cos(ang) * rad,
+          7 + (a.arrowCount % 2) * .8,
+          Math.sin(ang) * rad
+        ));
+
+        spawnSkillArrow(new THREE.Vector3(0, -1, 0), {
+          speed: 19,
+          damage: 7,
+          color: 0xffdf85,
+          scale: .85,
+          life: .55,
+          origin
+        });
+      }
+    } else if (a.kind === 'fireWall') {
+      a.tick -= dt;
+      a.object.children.forEach((flame, idx) => {
+        flame.scale.y = .82 + Math.sin(elapsed * 11 + idx) * .16;
+        flame.material.opacity = .62 + Math.sin(elapsed * 9 + idx) * .12;
+      });
+
+      if (a.tick <= 0 && dummyAlive) {
+        a.tick = .42;
+
+        const rel = dummy.position.clone().sub(a.center).setY(0);
+        const along = Math.abs(rel.dot(a.right));
+        const forwardDist = Math.abs(rel.x * (-a.right.z) + rel.z * a.right.x);
+
+        if (along <= 2.25 && forwardDist <= .75) {
+          damageDummy(9, false);
+        }
+      }
+    }
+
+    if (a.life <= 0) {
+      scene.remove(a.object);
+      a.object.traverse?.(child => {
+        child.geometry?.dispose?.();
+        child.material?.dispose?.();
+      });
+      a.object.geometry?.dispose?.();
+      a.object.material?.dispose?.();
+      skillAreas.splice(i, 1);
     }
   }
 }
@@ -766,7 +1080,8 @@ function updateSkills(dt) {
     skillCooldowns[type] = Math.max(0, skillCooldowns[type] - dt);
   }
 
-  updateSwordWaves(dt);
+  updateSkillProjectiles(dt);
+  updateSkillAreas(dt);
 
   if (!skillAction) {
     updateSkillUI();
@@ -777,14 +1092,13 @@ function updateSkills(dt) {
   s.t += dt;
   const p = THREE.MathUtils.clamp(s.t / s.duration, 0, 1);
 
+  // 장검
   if (s.type === 'dashSlash') {
-    // 짧고 폭발적으로 접근한 뒤 크게 한 번 벤다.
     if (s.t <= .28) {
       player.position.addScaledVector(s.dir, 15.5 * dt);
       player.position.x = THREE.MathUtils.clamp(player.position.x, -48, 48);
       player.position.z = THREE.MathUtils.clamp(player.position.z, -48, 48);
     }
-
     if (!s.hit && s.t >= .24) {
       s.hit = true;
       hitEnemyCone(3.05, 2.0, 28, false);
@@ -797,18 +1111,64 @@ function updateSkills(dt) {
       shake = Math.max(shake, .05);
     }
   } else if (s.type === 'spinSlash') {
-    // 캐릭터 자체를 한 바퀴 돌려 360도 회전베기 실루엣을 확실하게 만든다.
     const spinEase = p < .12
       ? p / .12 * .10
       : .10 + THREE.MathUtils.smoothstep((p - .12) / .88, 0, 1) * .90;
     player.rotation.y = s.baseYaw + spinEase * Math.PI * 2;
-
     if (!s.hit && s.t >= .34) {
       s.hit = true;
       if (dummyAlive && dummy.position.distanceTo(player.position) <= 3.35) {
         damageDummy(32, true);
       }
       shake = Math.max(shake, .18);
+    }
+
+  // 활
+  } else if (s.type === 'rapidFire') {
+    if (s.count < 6 && s.t >= s.nextShot) {
+      s.nextShot += .14;
+      s.count++;
+      const dir = skillAimDirection();
+      spawnSkillArrow(dir, { speed: 25, damage: 8, color: 0xf4d58a, scale: .86, life: 1.15 });
+    }
+  } else if (s.type === 'powerShot') {
+    if (!s.spawned && s.t >= .36) {
+      s.spawned = true;
+      spawnSkillArrow(skillAimDirection(), {
+        speed: 30,
+        damage: 42,
+        color: 0xffe6a3,
+        scale: 1.65,
+        life: 1.25,
+        finisher: true
+      });
+      shake = Math.max(shake, .10);
+    }
+  } else if (s.type === 'arrowRain') {
+    if (!s.spawned && s.t >= .32) {
+      s.spawned = true;
+      spawnArrowRain(s.targetPoint);
+    }
+
+  // 지팡이
+  } else if (s.type === 'fireball') {
+    if (!s.spawned && s.t >= .26) {
+      s.spawned = true;
+      spawnFireball(skillAimDirection());
+      shake = Math.max(shake, .06);
+    }
+  } else if (s.type === 'fireArrow') {
+    if (!s.spawned && s.t >= .18) {
+      s.spawned = true;
+      spawnFireArrow(skillAimDirection(), 24);
+    }
+  } else if (s.type === 'fireWall') {
+    if (!s.spawned && s.t >= .32) {
+      s.spawned = true;
+      const flat = playerForward(new THREE.Vector3()).normalize();
+      const target = player.position.clone().addScaledVector(flat, 3.1);
+      spawnFireWall(target, flat);
+      shake = Math.max(shake, .07);
     }
   }
 
