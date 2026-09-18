@@ -599,37 +599,171 @@ function keyed(neutral, windup, follow, wind, cut, recover) {
   return THREE.MathUtils.lerp(v, neutral, recover);
 }
 
-function solveTwoBoneArmIK(shoulderRig, elbowRig, wristRig, target, pole) {
+// 현재 단순 관절 리그에 맞춘 인간형 관절 제한.
+// 실제 해부학 수치를 그대로 복제하기보다는, 사람에게 불가능한 방향/역관절을
+// 절대 허용하지 않는 것을 우선한다.
+const HUMAN_LIMITS = {
+  shoulderX: [-1.95, 1.25],
+  shoulderY: [-1.35, 1.35],
+  rightShoulderZ: [-2.45, .72],
+  leftShoulderZ: [-.72, 2.45],
+
+  // 팔꿈치: 거의 한 축으로만 접힌다. 약 145도까지.
+  elbowX: [-2.53, .03],
+  elbowSide: [-.07, .07],
+
+  wristX: [-.78, .78],
+  wristY: [-.52, .52],
+  wristZ: [-.58, .58],
+
+  hipX: [-1.50, 1.30],
+  kneeX: [0, 2.44],
+  ankleX: [-.62, .55],
+
+  torsoX: [-.62, .62],
+  torsoY: [-1.18, 1.18],
+  torsoZ: [-.48, .48],
+  hipsX: [-.42, .62],
+  hipsY: [-1.18, 1.18],
+  hipsZ: [-.42, .42],
+
+  headX: [-.62, .62],
+  headY: [-1.25, 1.25]
+};
+
+function clampJoint(v, range) {
+  return THREE.MathUtils.clamp(v, range[0], range[1]);
+}
+
+function constrainShoulder(rig, side) {
+  rig.rotation.x = clampJoint(rig.rotation.x, HUMAN_LIMITS.shoulderX);
+  rig.rotation.y = clampJoint(rig.rotation.y, HUMAN_LIMITS.shoulderY);
+  rig.rotation.z = clampJoint(
+    rig.rotation.z,
+    side === 'right' ? HUMAN_LIMITS.rightShoulderZ : HUMAN_LIMITS.leftShoulderZ
+  );
+}
+
+function constrainElbow(rig) {
+  // 팔꿈치는 힌지처럼 앞뒤 굽힘만 허용한다.
+  rig.rotation.x = clampJoint(rig.rotation.x, HUMAN_LIMITS.elbowX);
+  rig.rotation.y = clampJoint(rig.rotation.y, HUMAN_LIMITS.elbowSide);
+  rig.rotation.z = clampJoint(rig.rotation.z, HUMAN_LIMITS.elbowSide);
+}
+
+function constrainWrist(rig) {
+  rig.rotation.x = clampJoint(rig.rotation.x, HUMAN_LIMITS.wristX);
+  rig.rotation.y = clampJoint(rig.rotation.y, HUMAN_LIMITS.wristY);
+  rig.rotation.z = clampJoint(rig.rotation.z, HUMAN_LIMITS.wristZ);
+}
+
+function applyHumanJointLimits() {
+  constrainShoulder(rightArmRig.shoulder, 'right');
+  constrainShoulder(leftArmRig.shoulder, 'left');
+
+  constrainElbow(rightArmRig.elbow);
+  constrainElbow(leftArmRig.elbow);
+
+  constrainWrist(rightArmRig.wrist);
+  constrainWrist(leftArmRig.wrist);
+
+  leftLegRig.thigh.rotation.x = clampJoint(leftLegRig.thigh.rotation.x, HUMAN_LIMITS.hipX);
+  rightLegRig.thigh.rotation.x = clampJoint(rightLegRig.thigh.rotation.x, HUMAN_LIMITS.hipX);
+
+  // 무릎은 뒤로만 굽는다. 음수(역관절)는 절대 금지.
+  leftLegRig.knee.rotation.x = clampJoint(leftLegRig.knee.rotation.x, HUMAN_LIMITS.kneeX);
+  rightLegRig.knee.rotation.x = clampJoint(rightLegRig.knee.rotation.x, HUMAN_LIMITS.kneeX);
+  leftLegRig.knee.rotation.y = 0;
+  leftLegRig.knee.rotation.z = 0;
+  rightLegRig.knee.rotation.y = 0;
+  rightLegRig.knee.rotation.z = 0;
+
+  leftLegRig.ankle.rotation.x = clampJoint(leftLegRig.ankle.rotation.x, HUMAN_LIMITS.ankleX);
+  rightLegRig.ankle.rotation.x = clampJoint(rightLegRig.ankle.rotation.x, HUMAN_LIMITS.ankleX);
+  leftLegRig.ankle.rotation.y = 0;
+  leftLegRig.ankle.rotation.z = 0;
+  rightLegRig.ankle.rotation.y = 0;
+  rightLegRig.ankle.rotation.z = 0;
+
+  torsoRig.rotation.x = clampJoint(torsoRig.rotation.x, HUMAN_LIMITS.torsoX);
+  torsoRig.rotation.y = clampJoint(torsoRig.rotation.y, HUMAN_LIMITS.torsoY);
+  torsoRig.rotation.z = clampJoint(torsoRig.rotation.z, HUMAN_LIMITS.torsoZ);
+
+  hipsRig.rotation.x = clampJoint(hipsRig.rotation.x, HUMAN_LIMITS.hipsX);
+  hipsRig.rotation.y = clampJoint(hipsRig.rotation.y, HUMAN_LIMITS.hipsY);
+  hipsRig.rotation.z = clampJoint(hipsRig.rotation.z, HUMAN_LIMITS.hipsZ);
+
+  headRig.rotation.x = clampJoint(headRig.rotation.x, HUMAN_LIMITS.headX);
+  headRig.rotation.y = clampJoint(headRig.rotation.y, HUMAN_LIMITS.headY);
+  headRig.rotation.z = 0;
+}
+
+function solveTwoBoneArmIK(shoulderRig, elbowRig, wristRig, target, pole, side = 'right') {
   const upperLen = .72;
   const lowerLen = .66;
   const shoulderPos = shoulderRig.position.clone();
 
   const toTarget = target.clone().sub(shoulderPos);
   let dist = toTarget.length();
-  const dir = toTarget.normalize();
-  dist = THREE.MathUtils.clamp(dist, Math.abs(upperLen - lowerLen) + .02, upperLen + lowerLen - .02);
+  if (dist < .0001) return;
 
+  const targetDir = toTarget.clone().normalize();
+  dist = THREE.MathUtils.clamp(
+    dist,
+    Math.abs(upperLen - lowerLen) + .06,
+    upperLen + lowerLen - .04
+  );
+
+  // 코사인 법칙으로 팔꿈치 위치를 정하되, 지정된 pole 쪽으로만 굽힌다.
   const a = (upperLen * upperLen - lowerLen * lowerLen + dist * dist) / (2 * dist);
   const h = Math.sqrt(Math.max(.0001, upperLen * upperLen - a * a));
 
   const poleVec = pole.clone().sub(shoulderPos);
-  poleVec.addScaledVector(dir, -poleVec.dot(dir));
-  if (poleVec.lengthSq() < .0001) poleVec.set(0, 0, 1);
+  poleVec.addScaledVector(targetDir, -poleVec.dot(targetDir));
+
+  if (poleVec.lengthSq() < .0001) {
+    poleVec.set(side === 'right' ? -1 : 1, .2, .5);
+  }
   poleVec.normalize();
 
   const elbowPos = shoulderPos.clone()
-    .addScaledVector(dir, a)
+    .addScaledVector(targetDir, a)
     .addScaledVector(poleVec, h);
 
   const upperDir = elbowPos.clone().sub(shoulderPos).normalize();
-  shoulderRig.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), upperDir);
+  const lowerDir = target.clone().sub(elbowPos).normalize();
 
-  const lowerDirTorso = target.clone().sub(elbowPos).normalize();
-  const invShoulder = shoulderRig.quaternion.clone().invert();
-  const lowerDirLocal = lowerDirTorso.applyQuaternion(invShoulder).normalize();
-  elbowRig.quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), lowerDirLocal);
+  // 어깨의 roll까지 정해 팔꿈치가 한 축으로만 접혀도 목표 방향을 바라보게 한다.
+  let bendNormal = new THREE.Vector3().crossVectors(upperDir, lowerDir);
+  if (bendNormal.lengthSq() < .0001) {
+    bendNormal = new THREE.Vector3().crossVectors(upperDir, poleVec);
+  }
+  bendNormal.normalize();
 
+  // local -Y가 위팔 방향. local X는 팔꿈치 힌지 축.
+  const xAxis = bendNormal.clone().multiplyScalar(-1).normalize();
+  const yAxis = upperDir.clone().multiplyScalar(-1).normalize();
+  const zAxis = new THREE.Vector3().crossVectors(xAxis, yAxis).normalize();
+  xAxis.crossVectors(yAxis, zAxis).normalize();
+
+  const basis = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+  shoulderRig.quaternion.setFromRotationMatrix(basis);
+  constrainShoulder(shoulderRig, side);
+
+  // 팔꿈치는 순수 힌지. 옆 방향 회전은 0에 가깝게 강제.
+  const bendAngle = Math.acos(
+    THREE.MathUtils.clamp(upperDir.dot(lowerDir), -1, 1)
+  );
+  elbowRig.rotation.set(
+    -THREE.MathUtils.clamp(bendAngle, 0, 2.53),
+    0,
+    0
+  );
+  constrainElbow(elbowRig);
+
+  // IK는 손목을 꺾어서 목표를 맞추지 않는다.
   wristRig.rotation.set(0, 0, 0);
+  constrainWrist(wristRig);
 }
 
 function firstAttackIKFrame(p) {
@@ -1018,7 +1152,8 @@ function animateRig(dt, moving) {
       rightArmRig.elbow,
       rightArmRig.wrist,
       firstIK.target,
-      firstIK.pole
+      firstIK.pole,
+      'right'
     );
 
     // 중간 타격 순간: 검끝이 캐릭터 정면, 즉 적 방향을 정확히 향한다.
@@ -1047,6 +1182,9 @@ function animateRig(dt, moving) {
 
   headRig.rotation.x = damp(headRig.rotation.x, headX, 10, dt);
   headRig.rotation.y = damp(headRig.rotation.y, headY, 10, dt);
+
+  // 어떤 애니메이션/IK도 이 선을 넘어 인간 관절 범위를 벗어날 수 없다.
+  applyHumanJointLimits();
 }
 function updatePlayer(dt) {
   elapsed += dt;
