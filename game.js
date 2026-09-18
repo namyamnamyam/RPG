@@ -354,7 +354,7 @@ function getMoveInput() {
 function getMoveVector() {
   const input = getMoveInput();
   const forward = new THREE.Vector3(-Math.sin(cameraYaw), 0, -Math.cos(cameraYaw));
-  const right = new THREE.Vector3(forward.z, 0, -forward.x);
+  const right = new THREE.Vector3(-forward.z, 0, forward.x);
   return forward.multiplyScalar(input.y).add(right.multiplyScalar(input.x));
 }
 
