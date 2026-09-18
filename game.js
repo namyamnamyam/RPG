@@ -207,6 +207,44 @@ rightArmRig.elbow.rotation.x = -.12;
 leftArmRig.elbow.rotation.x = -.08;
 swordRoot.rotation.z = .03;
 
+// 아주 약한 대쉬 바람 이펙트: 캐릭터 뒤쪽에 짧은 반투명 속도선만 표시.
+const dashWind = new THREE.Group();
+player.add(dashWind);
+dashWind.position.set(0, 1.25, 0);
+dashWind.visible = false;
+const dashWindLines = [];
+for (let i = 0; i < 7; i++) {
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0xd9f4ff,
+    transparent: true,
+    opacity: 0,
+    depthWrite: false
+  });
+  const streak = new THREE.Mesh(new THREE.BoxGeometry(.018, .018, .95 + (i % 3) * .22), mat);
+  streak.position.set(
+    (i - 3) * .17,
+    ((i % 4) - 1.5) * .18,
+    -.55 - (i % 3) * .2
+  );
+  dashWind.add(streak);
+  dashWindLines.push(streak);
+}
+
+function updateDashWind() {
+  const active = dashTime > 0;
+  dashWind.visible = active;
+  if (!active) return;
+
+  const progress = 1 - THREE.MathUtils.clamp(dashTime / DASH_DURATION, 0, 1);
+  for (let i = 0; i < dashWindLines.length; i++) {
+    const streak = dashWindLines[i];
+    const travel = (elapsed * 8.5 + i * .31) % 1.0;
+    streak.position.z = -.42 - travel * 1.15;
+    streak.scale.z = .82 + travel * .55;
+    streak.material.opacity = (0.055 + (1 - travel) * .055) * (1 - progress * .18);
+  }
+}
+
 function createDummy() {
   const g = new THREE.Group();
   const wood = new THREE.MeshStandardMaterial({ color: 0x8c623e, roughness: .92 });
@@ -252,8 +290,8 @@ let shake = 0;
 let elapsed = 0;
 
 const DASH_RECHARGE = 1.5;
-const DASH_DURATION = .16;
-const DASH_SPEED = 22.5;
+const DASH_DURATION = .24;
+const DASH_SPEED = 22.0;
 const IFRAME = .18;
 const gravity = 22;
 
@@ -340,14 +378,14 @@ function tryDash() {
 
 function tryJump() {
   if (!grounded) return;
-  velocityY = 8.2;
+  velocityY = 10.4;
   grounded = false;
 }
 
 const attackData = [
-  { duration: .48, hitAt: .28, damage: 10, range: 2.5, arc: 1.75, finisher: false },
-  { duration: .46, hitAt: .26, damage: 12, range: 2.55, arc: 1.85, finisher: false },
-  { duration: .58, hitAt: .34, damage: 14, range: 2.75, arc: 1.65, finisher: false },
+  { duration: .44, hitAt: .24, damage: 10, range: 2.5, arc: 1.75, finisher: false },
+  { duration: .46, hitAt: .25, damage: 12, range: 2.55, arc: 1.85, finisher: false },
+  { duration: .54, hitAt: .30, damage: 14, range: 2.75, arc: 1.65, finisher: false },
   { duration: .72, hitAt: .42, damage: 22, range: 3.25, arc: 2.75, finisher: true }
 ];
 
@@ -558,9 +596,9 @@ function keyed(neutral, windup, follow, wind, cut, recover) {
 }
 
 function attackPose(index, p) {
-  const wind = phase(p, 0, index === 3 ? .36 : .30);
-  const cut = phase(p, index === 3 ? .30 : .24, index === 3 ? .70 : .67);
-  const recover = phase(p, index === 3 ? .80 : .74, 1);
+  const wind = phase(p, 0, index === 3 ? .36 : .26);
+  const cut = phase(p, index === 3 ? .30 : .20, index === 3 ? .70 : .62);
+  const recover = phase(p, index === 3 ? .80 : .72, 1);
 
   const n = {
     hipY: 0,
@@ -580,76 +618,79 @@ function attackPose(index, p) {
   let w, h;
 
   if (index === 0) {
-    // 1타: 오른쪽 위에서 왼쪽 아래. 팔꿈치를 깊게 접었다가 베는 순간 쭉 편다.
+    // 1타: 오른쪽 어깨 뒤에서 준비 -> 몸을 풀며 왼쪽 아래로 대각 베기.
+    // 관절 각도는 과하게 꺾지 않고, 팔꿈치가 자연스럽게 펴지게 한다.
     w = {
-      hipY: -.28, torsoX: -.06, torsoY: -.56, torsoZ: -.13,
-      rSX: .20, rSY: -.52, rSZ: -1.55,
-      rEX: -1.32, rEY: .10, rEZ: -.28,
-      rWX: .18, rWY: -.18, rWZ: -.58,
-      lSX: .42, lSY: .12, lSZ: .34,
-      lEX: -.58, lEY: 0, lEZ: .18,
-      lWX: 0, lWY: 0, lWZ: .10,
-      lTX: -.18, rTX: .12, lKX: .26, rKX: .10, lAX: -.10, rAX: .06,
-      headX: -.03, headY: .12
+      hipY: -.18, torsoX: -.03, torsoY: -.34, torsoZ: -.07,
+      rSX: -.34, rSY: -.28, rSZ: -1.05,
+      rEX: -.92, rEY: .04, rEZ: -.08,
+      rWX: .06, rWY: -.10, rWZ: -.22,
+      lSX: .26, lSY: .06, lSZ: .18,
+      lEX: -.32, lEY: 0, lEZ: .06,
+      lWX: 0, lWY: 0, lWZ: .04,
+      lTX: -.10, rTX: .07, lKX: .14, rKX: .06, lAX: -.04, rAX: .02,
+      headX: -.01, headY: .07
     };
     h = {
-      hipY: .24, torsoX: .16, torsoY: .64, torsoZ: .15,
-      rSX: -.86, rSY: .68, rSZ: -.30,
-      rEX: -.08, rEY: -.06, rEZ: .16,
-      rWX: -.10, rWY: .22, rWZ: .42,
-      lSX: -.18, lSY: -.20, lSZ: .18,
-      lEX: -.26, lEY: 0, lEZ: -.10,
-      lWX: 0, lWY: 0, lWZ: -.08,
-      lTX: .10, rTX: -.20, lKX: .08, rKX: .24, lAX: .06, rAX: -.10,
-      headX: .04, headY: -.16
+      hipY: .16, torsoX: .08, torsoY: .42, torsoZ: .08,
+      rSX: -.68, rSY: .44, rSZ: -.34,
+      rEX: -.16, rEY: -.02, rEZ: .07,
+      rWX: -.04, rWY: .10, rWZ: .20,
+      lSX: -.08, lSY: -.08, lSZ: .10,
+      lEX: -.20, lEY: 0, lEZ: -.04,
+      lWX: 0, lWY: 0, lWZ: -.03,
+      lTX: .05, rTX: -.10, lKX: .04, rKX: .12, lAX: .03, rAX: -.04,
+      headX: .02, headY: -.08
     };
   } else if (index === 1) {
-    // 2타: 왼쪽 아래에서 오른쪽 위. 손목을 뒤집고 팔꿈치가 따라 올라오는 역대각.
+    // 2타: 1타가 끝난 낮은 위치에서 반대 방향으로 올려베기.
+    // 손목 뒤집기보다 골반/몸통 회전과 팔꿈치 펴짐을 중심으로.
     w = {
-      hipY: .30, torsoX: .12, torsoY: .54, torsoZ: .15,
-      rSX: -.92, rSY: .72, rSZ: -.22,
-      rEX: -.30, rEY: -.18, rEZ: .24,
-      rWX: -.18, rWY: .26, rWZ: .58,
-      lSX: -.10, lSY: -.18, lSZ: .22,
-      lEX: -.36, lEY: 0, lEZ: -.12,
-      lWX: 0, lWY: 0, lWZ: -.10,
-      lTX: .12, rTX: -.24, lKX: .12, rKX: .30, lAX: .05, rAX: -.14,
-      headX: .03, headY: -.12
+      hipY: .17, torsoX: .07, torsoY: .38, torsoZ: .08,
+      rSX: -.72, rSY: .42, rSZ: -.38,
+      rEX: -.42, rEY: -.06, rEZ: .08,
+      rWX: -.05, rWY: .10, rWZ: .18,
+      lSX: -.04, lSY: -.08, lSZ: .12,
+      lEX: -.24, lEY: 0, lEZ: -.04,
+      lWX: 0, lWY: 0, lWZ: -.03,
+      lTX: .07, rTX: -.12, lKX: .06, rKX: .16, lAX: .02, rAX: -.06,
+      headX: .02, headY: -.07
     };
     h = {
-      hipY: -.28, torsoX: -.08, torsoY: -.64, torsoZ: -.17,
-      rSX: .16, rSY: -.74, rSZ: -2.02,
-      rEX: -1.08, rEY: .12, rEZ: -.26,
-      rWX: .18, rWY: -.28, rWZ: -.52,
-      lSX: .38, lSY: .16, lSZ: .38,
-      lEX: -.64, lEY: 0, lEZ: .18,
-      lWX: 0, lWY: 0, lWZ: .12,
-      lTX: -.24, rTX: .14, lKX: .32, rKX: .10, lAX: -.12, rAX: .06,
-      headX: -.04, headY: .16
+      hipY: -.18, torsoX: -.04, torsoY: -.42, torsoZ: -.09,
+      rSX: -.28, rSY: -.46, rSZ: -1.18,
+      rEX: -.24, rEY: .04, rEZ: -.07,
+      rWX: .05, rWY: -.11, rWZ: -.20,
+      lSX: .22, lSY: .08, lSZ: .20,
+      lEX: -.34, lEY: 0, lEZ: .06,
+      lWX: 0, lWY: 0, lWZ: .04,
+      lTX: -.12, rTX: .08, lKX: .16, rKX: .05, lAX: -.05, rAX: .02,
+      headX: -.02, headY: .08
     };
   } else if (index === 2) {
-    // 3타: 양 무릎을 굽히며 검을 머리 위로 당겼다가, 다리를 펴면서 강하게 내려찍는다.
+    // 3타: 무릎을 살짝 굽히며 검을 머리 위로 끌어올리고,
+    // 하체를 펴면서 정면으로 강하게 내려찍는다.
     w = {
-      hipY: -.08, torsoX: -.20, torsoY: -.10, torsoZ: -.02,
-      rSX: .10, rSY: -.18, rSZ: -2.72,
-      rEX: -1.42, rEY: .06, rEZ: -.08,
-      rWX: .30, rWY: -.06, rWZ: -.12,
-      lSX: .70, lSY: .22, lSZ: -.72,
-      lEX: -.92, lEY: 0, lEZ: .16,
-      lWX: .12, lWY: 0, lWZ: .16,
-      lTX: -.34, rTX: -.34, lKX: .78, rKX: .78, lAX: -.24, rAX: -.24,
-      headX: -.12, headY: .04
+      hipY: -.04, torsoX: -.12, torsoY: -.06, torsoZ: -.01,
+      rSX: -.18, rSY: -.08, rSZ: -2.05,
+      rEX: -1.05, rEY: .02, rEZ: -.03,
+      rWX: .12, rWY: -.02, rWZ: -.05,
+      lSX: .38, lSY: .10, lSZ: -.30,
+      lEX: -.56, lEY: 0, lEZ: .08,
+      lWX: .04, lWY: 0, lWZ: .06,
+      lTX: -.20, rTX: -.20, lKX: .48, rKX: .48, lAX: -.12, rAX: -.12,
+      headX: -.06, headY: .02
     };
     h = {
-      hipY: .06, torsoX: .38, torsoY: .08, torsoZ: .02,
-      rSX: -1.10, rSY: .12, rSZ: -.06,
-      rEX: -.05, rEY: -.04, rEZ: .02,
-      rWX: -.22, rWY: .04, rWZ: .10,
-      lSX: -.28, lSY: -.16, lSZ: .38,
-      lEX: -.30, lEY: 0, lEZ: -.12,
-      lWX: 0, lWY: 0, lWZ: -.06,
-      lTX: .04, rTX: .04, lKX: .06, rKX: .06, lAX: .10, rAX: .10,
-      headX: .12, headY: -.04
+      hipY: .03, torsoX: .22, torsoY: .05, torsoZ: .01,
+      rSX: -.88, rSY: .06, rSZ: -.12,
+      rEX: -.14, rEY: -.01, rEZ: .01,
+      rWX: -.08, rWY: .02, rWZ: .04,
+      lSX: -.14, lSY: -.08, lSZ: .20,
+      lEX: -.24, lEY: 0, lEZ: -.05,
+      lWX: 0, lWY: 0, lWZ: -.03,
+      lTX: .02, rTX: .02, lKX: .05, rKX: .05, lAX: .06, rAX: .06,
+      headX: .08, headY: -.02
     };
   } else {
     // 4타: 무릎-골반-몸통-어깨-팔꿈치-손목 순으로 풀리는 큰 횡베기.
@@ -741,16 +782,16 @@ function animateRig(dt, moving) {
 
   if (dashTime > 0) {
     // 진짜 관절을 쓰는 낮은 질주 자세.
-    torsoX = .58;
+    torsoX = .46;
     torsoY = 0;
     torsoZ = 0;
-    hipsRig.position.y = damp(hipsRig.position.y, 1.50, 22, dt);
+    hipsRig.position.y = damp(hipsRig.position.y, 1.54, 20, dt);
     hipsRig.rotation.x = damp(hipsRig.rotation.x, .18, 22, dt);
 
     lTX = -.76;
     rTX = .52;
-    lKX = 1.24;
-    rKX = .48;
+    lKX = 1.05;
+    rKX = .40;
     lAX = -.28;
     rAX = .18;
 
@@ -891,6 +932,7 @@ function updatePlayer(dt) {
   }
 
   animateRig(dt, moving);
+  updateDashWind();
 
 }
 
