@@ -97,46 +97,115 @@ function mesh(geo, mat, parent, pos, rot = [0, 0, 0]) {
   return m;
 }
 
-const skinMat = new THREE.MeshStandardMaterial({ color: 0xe4bda1, roughness: .72 });
-const clothMat = new THREE.MeshStandardMaterial({ color: 0x263a55, roughness: .78 });
-const leatherMat = new THREE.MeshStandardMaterial({ color: 0x49382d, roughness: .8 });
+const skinMat = new THREE.MeshStandardMaterial({ color: 0xe7bea3, roughness: .68 });
+const clothMat = new THREE.MeshStandardMaterial({ color: 0x263a55, roughness: .74 });
+const clothLightMat = new THREE.MeshStandardMaterial({ color: 0x38577a, roughness: .76 });
+const leatherMat = new THREE.MeshStandardMaterial({ color: 0x49382d, roughness: .82 });
+const bootMat = new THREE.MeshStandardMaterial({ color: 0x241d1a, roughness: .88 });
+const hairMat = new THREE.MeshStandardMaterial({ color: 0x3a261b, roughness: .92 });
 const metalMat = new THREE.MeshStandardMaterial({ color: 0xbfc4c7, metalness: .72, roughness: .28 });
+const darkMetalMat = new THREE.MeshStandardMaterial({ color: 0x5f676d, metalness: .62, roughness: .34 });
 
 const player = new THREE.Group();
 scene.add(player);
 player.position.set(0, 0, 8);
 player.rotation.y = Math.PI;
 
-mesh(new THREE.CapsuleGeometry(.48, .9, 5, 10), clothMat, player, [0, 1.45, 0]);
-mesh(new THREE.SphereGeometry(.34, 16, 12), skinMat, player, [0, 2.55, 0]);
-mesh(new THREE.BoxGeometry(.82, .12, .5), leatherMat, player, [0, 1.18, 0]);
+const hipsRig = new THREE.Group();
+hipsRig.position.set(0, 1.7, 0);
+player.add(hipsRig);
 
-const leftArm = new THREE.Group();
-leftArm.position.set(-.54, 2.0, 0);
-player.add(leftArm);
-mesh(new THREE.CapsuleGeometry(.13, .58, 4, 7), clothMat, leftArm, [0, -.36, 0]);
+const pelvisMesh = mesh(new THREE.BoxGeometry(.72, .34, .42), leatherMat, hipsRig, [0, 0, 0]);
+const beltMesh = mesh(new THREE.BoxGeometry(.82, .11, .47), darkMetalMat, hipsRig, [0, .19, 0]);
 
-const rightArm = new THREE.Group();
-rightArm.position.set(.54, 2.0, 0);
-player.add(rightArm);
-mesh(new THREE.CapsuleGeometry(.13, .58, 4, 7), clothMat, rightArm, [0, -.36, 0]);
+const torsoRig = new THREE.Group();
+torsoRig.position.set(0, .16, 0);
+hipsRig.add(torsoRig);
+mesh(new THREE.BoxGeometry(.92, .92, .46), clothMat, torsoRig, [0, .55, 0]);
+mesh(new THREE.BoxGeometry(.98, .18, .5), clothLightMat, torsoRig, [0, .93, 0]);
+
+const neckRig = new THREE.Group();
+neckRig.position.set(0, 1.03, 0);
+torsoRig.add(neckRig);
+mesh(new THREE.CylinderGeometry(.12, .14, .18, 10), skinMat, neckRig, [0, .06, 0]);
+
+const headRig = new THREE.Group();
+headRig.position.set(0, .19, 0);
+neckRig.add(headRig);
+mesh(new THREE.SphereGeometry(.34, 18, 14), skinMat, headRig, [0, .28, 0]);
+const hair = mesh(new THREE.SphereGeometry(.35, 16, 10, 0, Math.PI * 2, 0, Math.PI * .56), hairMat, headRig, [0, .38, -.015]);
+hair.scale.set(1.02, .82, 1.02);
+
+function buildArm(side) {
+  const sign = side === 'left' ? -1 : 1;
+  const shoulder = new THREE.Group();
+  shoulder.position.set(sign * .56, .91, 0);
+  torsoRig.add(shoulder);
+
+  mesh(new THREE.SphereGeometry(.17, 10, 8), clothLightMat, shoulder, [0, 0, 0]);
+  mesh(new THREE.CapsuleGeometry(.135, .42, 4, 8), clothMat, shoulder, [0, -.34, 0]);
+
+  const elbow = new THREE.Group();
+  elbow.position.set(0, -.72, 0);
+  shoulder.add(elbow);
+  mesh(new THREE.SphereGeometry(.13, 10, 8), leatherMat, elbow, [0, 0, 0]);
+  mesh(new THREE.CapsuleGeometry(.115, .38, 4, 8), clothLightMat, elbow, [0, -.31, 0]);
+
+  const wrist = new THREE.Group();
+  wrist.position.set(0, -.66, 0);
+  elbow.add(wrist);
+  mesh(new THREE.SphereGeometry(.115, 10, 8), skinMat, wrist, [0, -.03, 0]);
+
+  const hand = new THREE.Group();
+  hand.position.set(0, -.11, 0);
+  wrist.add(hand);
+  mesh(new THREE.BoxGeometry(.19, .24, .17), skinMat, hand, [0, -.08, 0]);
+
+  return { shoulder, elbow, wrist, hand };
+}
+
+const leftArmRig = buildArm('left');
+const rightArmRig = buildArm('right');
+
+function buildLeg(side) {
+  const sign = side === 'left' ? -1 : 1;
+  const thigh = new THREE.Group();
+  thigh.position.set(sign * .23, -.15, 0);
+  hipsRig.add(thigh);
+
+  mesh(new THREE.CapsuleGeometry(.18, .48, 4, 8), leatherMat, thigh, [0, -.4, 0]);
+
+  const knee = new THREE.Group();
+  knee.position.set(0, -.8, 0);
+  thigh.add(knee);
+  mesh(new THREE.SphereGeometry(.15, 10, 8), darkMetalMat, knee, [0, 0, 0]);
+  mesh(new THREE.CapsuleGeometry(.155, .44, 4, 8), bootMat, knee, [0, -.37, 0]);
+
+  const ankle = new THREE.Group();
+  ankle.position.set(0, -.75, 0);
+  knee.add(ankle);
+  const foot = mesh(new THREE.BoxGeometry(.32, .2, .58), bootMat, ankle, [0, .06, .16]);
+  foot.rotation.x = -.04;
+
+  return { thigh, knee, ankle };
+}
+
+const leftLegRig = buildLeg('left');
+const rightLegRig = buildLeg('right');
 
 const swordRoot = new THREE.Group();
-swordRoot.position.set(0, -.65, .02);
-rightArm.add(swordRoot);
-mesh(new THREE.BoxGeometry(.12, .09, .36), leatherMat, swordRoot, [0, -.04, .05]);
-mesh(new THREE.BoxGeometry(.08, 1.45, .12), metalMat, swordRoot, [0, -.77, .12], [0, 0, .05]);
-mesh(new THREE.BoxGeometry(.45, .06, .11), metalMat, swordRoot, [0, -.12, .1]);
+swordRoot.position.set(.02, -.18, .01);
+rightArmRig.hand.add(swordRoot);
+mesh(new THREE.CylinderGeometry(.045, .045, .28, 8), leatherMat, swordRoot, [0, -.12, 0]);
+mesh(new THREE.BoxGeometry(.46, .055, .09), darkMetalMat, swordRoot, [0, -.29, 0]);
+mesh(new THREE.BoxGeometry(.085, 1.45, .12), metalMat, swordRoot, [0, -1.02, 0]);
+mesh(new THREE.BoxGeometry(.045, .18, .16), metalMat, swordRoot, [0, -1.77, 0]);
 
-const leftLeg = new THREE.Group();
-leftLeg.position.set(-.24, .98, 0);
-player.add(leftLeg);
-mesh(new THREE.CapsuleGeometry(.16, .72, 4, 7), leatherMat, leftLeg, [0, -.48, 0]);
-
-const rightLeg = new THREE.Group();
-rightLeg.position.set(.24, .98, 0);
-player.add(rightLeg);
-mesh(new THREE.CapsuleGeometry(.16, .72, 4, 7), leatherMat, rightLeg, [0, -.48, 0]);
+rightArmRig.shoulder.rotation.z = -.08;
+leftArmRig.shoulder.rotation.z = .08;
+rightArmRig.elbow.rotation.x = -.12;
+leftArmRig.elbow.rotation.x = -.08;
+swordRoot.rotation.z = .03;
 
 function createDummy() {
   const g = new THREE.Group();
@@ -468,6 +537,176 @@ function angleLerp(a, b, t) {
   return a + d * t;
 }
 
+function damp(current, target, speed, dt) {
+  return THREE.MathUtils.lerp(current, target, 1 - Math.exp(-speed * dt));
+}
+
+function dampRot(obj, x, y, z, speed, dt) {
+  obj.rotation.x = damp(obj.rotation.x, x, speed, dt);
+  obj.rotation.y = damp(obj.rotation.y, y, speed, dt);
+  obj.rotation.z = damp(obj.rotation.z, z, speed, dt);
+}
+
+function attackPose(index, p) {
+  const prep = THREE.MathUtils.smoothstep(Math.min(p / .34, 1), 0, 1);
+  const strike = THREE.MathUtils.smoothstep(Math.max(0, (p - .22) / .48), 0, 1);
+  const recover = THREE.MathUtils.smoothstep(Math.max(0, (p - .72) / .28), 0, 1);
+  const blend = strike * (1 - recover);
+
+  let torsoY = 0;
+  let torsoZ = 0;
+  let shoulderX = -.3;
+  let shoulderY = 0;
+  let shoulderZ = -.15;
+  let elbowX = -.45;
+  let elbowZ = 0;
+  let wristZ = 0;
+  let leftX = .08;
+  let leftZ = .12;
+
+  if (index === 0) {
+    torsoY = THREE.MathUtils.lerp(-.22, .38, strike) * (1 - recover);
+    torsoZ = THREE.MathUtils.lerp(-.07, .06, strike) * (1 - recover);
+    shoulderX = THREE.MathUtils.lerp(-.8, -.2, strike);
+    shoulderY = THREE.MathUtils.lerp(-.62, .55, strike);
+    shoulderZ = THREE.MathUtils.lerp(-.35, -.78, blend);
+    elbowX = THREE.MathUtils.lerp(-.85, -.22, strike);
+    wristZ = THREE.MathUtils.lerp(-.18, .28, strike);
+    leftX = -.18;
+  } else if (index === 1) {
+    torsoY = THREE.MathUtils.lerp(.26, -.42, strike) * (1 - recover);
+    torsoZ = THREE.MathUtils.lerp(.05, -.05, strike) * (1 - recover);
+    shoulderX = THREE.MathUtils.lerp(-.35, -.72, strike);
+    shoulderY = THREE.MathUtils.lerp(.7, -.7, strike);
+    shoulderZ = THREE.MathUtils.lerp(-.7, -.28, strike);
+    elbowX = THREE.MathUtils.lerp(-.25, -.78, strike);
+    wristZ = THREE.MathUtils.lerp(.25, -.2, strike);
+    leftZ = .28;
+  } else if (index === 2) {
+    torsoY = THREE.MathUtils.lerp(-.18, .22, strike) * (1 - recover);
+    torsoZ = -.04 * blend;
+    shoulderX = THREE.MathUtils.lerp(-1.18, -.25, strike);
+    shoulderY = THREE.MathUtils.lerp(-.18, .2, strike);
+    shoulderZ = THREE.MathUtils.lerp(-.35, -.2, strike);
+    elbowX = THREE.MathUtils.lerp(-1.05, -.1, strike);
+    wristZ = -.05;
+    leftX = -.28;
+  } else {
+    const wind = prep * (1 - strike);
+    torsoY = (-.68 * wind + .92 * strike) * (1 - recover);
+    torsoZ = .02 * blend;
+    shoulderX = THREE.MathUtils.lerp(-.52, -.2, strike);
+    shoulderY = THREE.MathUtils.lerp(-1.15, 1.15, strike);
+    shoulderZ = THREE.MathUtils.lerp(-.38, -.62, blend);
+    elbowX = THREE.MathUtils.lerp(-.42, -.08, strike);
+    wristZ = THREE.MathUtils.lerp(-.12, .12, strike);
+    leftX = -.34 * blend;
+    leftZ = .36 * blend;
+  }
+
+  return { torsoY, torsoZ, shoulderX, shoulderY, shoulderZ, elbowX, elbowZ, wristZ, leftX, leftZ };
+}
+
+function animateRig(dt, moving) {
+  const speed = 13;
+  const run = moving && grounded && dashTime <= 0 && !attack;
+  const cycle = elapsed * 9.5;
+  const step = run ? Math.sin(cycle) : 0;
+  const step2 = run ? Math.sin(cycle + Math.PI) : 0;
+  const bob = run ? Math.abs(Math.sin(cycle * .5)) * .045 : Math.sin(elapsed * 1.8) * .012;
+
+  hipsRig.position.y = damp(hipsRig.position.y, 1.7 + bob, 10, dt);
+  hipsRig.rotation.y = damp(hipsRig.rotation.y, run ? step * .035 : 0, 10, dt);
+  hipsRig.rotation.z = damp(hipsRig.rotation.z, run ? -step * .02 : 0, 10, dt);
+
+  let torsoX = 0;
+  let torsoY = 0;
+  let torsoZ = 0;
+  let rSX = run ? step2 * .42 : -.08;
+  let lSX = run ? step * .42 : .08;
+  let rSY = 0, lSY = 0;
+  let rSZ = -.08, lSZ = .08;
+  let rEX = run ? -.28 - Math.max(0, step2) * .28 : -.18;
+  let lEX = run ? -.22 - Math.max(0, step) * .2 : -.12;
+  let rEZ = 0, lEZ = 0;
+  let rWZ = 0;
+  let lWZ = 0;
+
+  let lTX = run ? step * .68 : 0;
+  let rTX = run ? step2 * .68 : 0;
+  let lKX = run ? Math.max(0, -step) * 1.0 : 0;
+  let rKX = run ? Math.max(0, -step2) * 1.0 : 0;
+  let lAX = run ? -Math.max(0, step) * .22 : 0;
+  let rAX = run ? -Math.max(0, step2) * .22 : 0;
+
+  if (!grounded) {
+    torsoX = -.08;
+    lTX = -.3;
+    rTX = .2;
+    lKX = .7;
+    rKX = .45;
+    lSX = -.22;
+    rSX = -.28;
+    lEX = -.45;
+    rEX = -.52;
+  }
+
+  if (dashTime > 0) {
+    torsoX = -.48;
+    hipsRig.rotation.x = damp(hipsRig.rotation.x, -.12, 15, dt);
+    lTX = .28;
+    rTX = .28;
+    lKX = .55;
+    rKX = .55;
+    lSX = -.78;
+    rSX = -.72;
+    lEX = -.48;
+    rEX = -.62;
+  } else {
+    hipsRig.rotation.x = damp(hipsRig.rotation.x, 0, 10, dt);
+  }
+
+  if (attack) {
+    const p = Math.min(1, attack.t / attack.duration);
+    const pose = attackPose(attack.index, p);
+    torsoY = pose.torsoY;
+    torsoZ = pose.torsoZ;
+    rSX = pose.shoulderX;
+    rSY = pose.shoulderY;
+    rSZ = pose.shoulderZ;
+    rEX = pose.elbowX;
+    rEZ = pose.elbowZ;
+    rWZ = pose.wristZ;
+    lSX = pose.leftX;
+    lSZ = pose.leftZ;
+
+    if (attack.index === 3) {
+      lTX = -.18;
+      rTX = .14;
+      lKX = .15;
+      rKX = .08;
+    }
+  }
+
+  dampRot(torsoRig, torsoX, torsoY, torsoZ, speed, dt);
+  dampRot(rightArmRig.shoulder, rSX, rSY, rSZ, speed, dt);
+  dampRot(leftArmRig.shoulder, lSX, lSY, lSZ, speed, dt);
+  dampRot(rightArmRig.elbow, rEX, 0, rEZ, speed, dt);
+  dampRot(leftArmRig.elbow, lEX, 0, lEZ, speed, dt);
+  dampRot(rightArmRig.wrist, 0, 0, rWZ, speed, dt);
+  dampRot(leftArmRig.wrist, 0, 0, lWZ, speed, dt);
+
+  dampRot(leftLegRig.thigh, lTX, 0, 0, 14, dt);
+  dampRot(rightLegRig.thigh, rTX, 0, 0, 14, dt);
+  dampRot(leftLegRig.knee, lKX, 0, 0, 16, dt);
+  dampRot(rightLegRig.knee, rKX, 0, 0, 16, dt);
+  dampRot(leftLegRig.ankle, lAX, 0, 0, 14, dt);
+  dampRot(rightLegRig.ankle, rAX, 0, 0, 14, dt);
+
+  headRig.rotation.y = damp(headRig.rotation.y, attack ? -torsoY * .32 : 0, 8, dt);
+  headRig.rotation.x = damp(headRig.rotation.x, dashTime > 0 ? .16 : 0, 8, dt);
+}
+
 function updatePlayer(dt) {
   elapsed += dt;
   manualCamHold = Math.max(0, manualCamHold - dt);
@@ -519,22 +758,8 @@ function updatePlayer(dt) {
 
   player.rotation.y = playerYaw;
 
-  const walk = moving && grounded && dashTime <= 0 ? Math.sin(elapsed * 10) * .55 : 0;
-  if (!attack) {
-    rightArm.rotation.x = walk * .35;
-    leftArm.rotation.x = -walk * .35;
-  }
-  leftLeg.rotation.x = -walk;
-  rightLeg.rotation.x = walk;
-
   if (attack) {
     attack.t += dt;
-    const p = Math.min(1, attack.t / attack.duration);
-    const eased = THREE.MathUtils.smoothstep(p, 0, 1);
-    const ang = THREE.MathUtils.lerp(attack.swing[0], attack.swing[1], eased);
-    rightArm.rotation.z = -.22;
-    rightArm.rotation.x = -.55 + Math.sin(p * Math.PI) * -.38;
-    rightArm.rotation.y = ang;
 
     if (!attack.hit && attack.t >= attack.hitAt) {
       attack.hit = true;
@@ -544,7 +769,6 @@ function updatePlayer(dt) {
     if (attack.t >= attack.duration) {
       const was = attack.index;
       attack = null;
-      rightArm.rotation.set(0, 0, 0);
       comboExpire = performance.now() / 1000 + .55;
       if (queuedAttack && was < 3) startAttack(was + 1);
       else if (was === 3) {
@@ -553,6 +777,9 @@ function updatePlayer(dt) {
       }
     }
   }
+
+  animateRig(dt, moving);
+
 }
 
 function updateDummy(dt) {
@@ -579,7 +806,7 @@ const tmpV = new THREE.Vector3();
 
 function updateCamera(dt) {
   const dist = 7.4;
-  const height = 2.9;
+  const height = 3.35;
   const horizontal = Math.cos(cameraPitch) * dist;
   const desired = new THREE.Vector3(
     player.position.x + Math.sin(cameraYaw) * horizontal,
@@ -590,7 +817,7 @@ function updateCamera(dt) {
   const smooth = 1 - Math.pow(.001, dt);
   camera.position.lerp(desired, smooth);
 
-  const look = tmpV.copy(player.position).add(new THREE.Vector3(0, 1.55, 0));
+  const look = tmpV.copy(player.position).add(new THREE.Vector3(0, 2.05, 0));
   if (locked && dummyAlive) {
     look.lerp(dummy.position.clone().add(new THREE.Vector3(0, 1.2, 0)), .22);
   }
