@@ -164,8 +164,10 @@ function buildArm(side) {
   return { shoulder, elbow, wrist, hand };
 }
 
-const leftArmRig = buildArm('left');
-const rightArmRig = buildArm('right');
+// 화면/캐릭터 기준 좌우가 뒤집혀 보이던 문제 수정:
+// 실제 보이는 오른팔을 rightArmRig로, 왼팔을 leftArmRig로 매핑한다.
+const rightArmRig = buildArm('left');
+const leftArmRig = buildArm('right');
 
 function buildLeg(side) {
   const sign = side === 'left' ? -1 : 1;
