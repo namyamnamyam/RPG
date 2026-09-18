@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+  <meta name="theme-color" content="#101318" />
+  <title>RPG Prototype</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div id="game"></div>
+  <div id="hud">
+    <div class="panel title-panel"><b>RPG PROTOTYPE</b><span>장검 · 4단 콤보 · 3스택 대쉬</span></div>
+    <div class="panel status-panel">
+      <div class="row"><span>대쉬</span><div id="dash-pips" class="pips"></div></div>
+      <div class="row"><span>더미</span><button id="dummy-mode" class="small-btn">∞ 무한 HP</button></div>
+      <div class="row hp-row"><span>HP</span><div class="hp-track"><div id="dummy-hp" class="hp-fill"></div></div></div>
+    </div>
+    <div id="crosshair" aria-hidden="true"></div>
+    <div id="lock-marker" aria-hidden="true">◆</div>
+    <div id="toast"></div>
+  </div>
+  <div id="camera-zone" aria-label="카메라 조작 영역"></div>
+  <div id="left-controls"><div id="joystick-base"><div id="joystick-knob"></div></div></div>
+  <div id="right-controls">
+    <button id="auto-btn" class="utility-btn active">AUTO CAM</button>
+    <button id="lock-btn" class="utility-btn">LOCK</button>
+    <button id="jump-btn" class="action-btn jump">JUMP</button>
+    <button id="dash-btn" class="action-btn dash">DASH</button>
+    <button id="attack-btn" class="action-btn attack">ATK</button>
+  </div>
+  <div id="desktop-help">WASD 이동 · 마우스 드래그 카메라 · J 공격 · Shift 대쉬 · Space 점프 · L 락온 · C 자동카메라</div>
+  <script type="module" src="/game.js"></script>
+</body>
+</html>
