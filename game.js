@@ -391,7 +391,7 @@ function tryJump() {
 }
 
 const attackData = [
-  { duration: 2.2, hitAt: 9.0, damage: 10, range: 2.5, arc: 1.75, finisher: false },
+  { duration: 4.2, hitAt: 2.85, damage: 10, range: 2.5, arc: 1.75, finisher: false },
   { duration: .46, hitAt: .25, damage: 12, range: 2.55, arc: 1.85, finisher: false },
   { duration: .54, hitAt: .30, damage: 14, range: 2.75, arc: 1.65, finisher: false },
   { duration: .72, hitAt: .42, damage: 22, range: 3.25, arc: 2.75, finisher: true }
@@ -1263,10 +1263,9 @@ function enforceSelfCollision() {
 }
 
 
-// ---------- Attack 1 manual key pose test ----------
-// 이번 테스트는 딱 하나:
-// 오른팔 팔꿈치를 접으면서 검을 왼쪽 어깨 뒤로 천천히 제낀다.
-// 다른 부위는 중립에 가깝게 고정한다.
+// ---------- Attack 1 manual key poses ----------
+// 현재는 속도보다 궤적 확인이 우선.
+// 1) 반대 어깨 위 준비 -> 2) 앞의 적을 천천히 베기 -> 3) 오른쪽 아래로 천천히 팔로스루
 const attack1NeutralPose = {
   hipY: 0,
   torsoX: 0, torsoY: 0, torsoZ: 0,
@@ -1289,22 +1288,65 @@ const attack1NeutralPose = {
 const attack1LeftShoulderBackPose = {
   ...attack1NeutralPose,
 
-  // 오른손은 반대쪽 어깨 윗면에 유지.
-  // 팔꿈치가 몸통 뒤/안쪽으로 파고들지 않고 가슴 앞쪽으로 나오도록 재계산.
+  // 오른손은 반대쪽 어깨 윗면.
+  // 팔꿈치는 몸 앞쪽을 보게 유지한다.
   rSX: -1.95,
   rSY: .78,
   rSZ: 1.48,
 
-  // 손은 어깨에 닿게 유지하면서 팔꿈치가 조금 더 앞을 향하도록 조정.
   rEX: -1.402,
   rEY: 0,
   rEZ: 0,
 
-  // 손 위치 확인이 우선이라 손목은 중립.
   rWX: 0,
   rWY: 0,
   rWZ: 0
-}
+};
+
+const attack1FrontSlashPose = {
+  ...attack1NeutralPose,
+
+  // 허리는 거의 정면으로 돌아오고,
+  // 오른팔은 팔꿈치를 절반 정도 펴며 정면의 적을 향해 베어 나간다.
+  hipY: .02,
+  torsoX: .02,
+  torsoY: .02,
+  torsoZ: 0,
+
+  rSX: -1.20,
+  rSY: .22,
+  rSZ: .72,
+
+  rEX: -.72,
+  rEY: 0,
+  rEZ: 0,
+
+  rWX: -.05,
+  rWY: .02,
+  rWZ: -.03
+};
+
+const attack1FollowThroughPose = {
+  ...attack1NeutralPose,
+
+  // 베고 난 뒤 오른팔을 조금 더 펴면서 오른쪽 아래로 빠진다.
+  hipY: .10,
+  torsoX: .05,
+  torsoY: .12,
+  torsoZ: .02,
+
+  rSX: -.72,
+  rSY: -.28,
+  rSZ: .10,
+
+  rEX: -.22,
+  rEY: 0,
+  rEZ: 0,
+
+  rWX: -.08,
+  rWY: -.06,
+  rWZ: -.08
+};
 
 function lerpPose(a, b, t) {
   const out = {};
@@ -1315,43 +1357,62 @@ function lerpPose(a, b, t) {
 }
 
 function getAttack1Pose(p) {
-  // 공격 전체 시간을 준비 동작 하나에 사용.
-  // 끝에 가까워질수록 부드럽게 감속하고 최종 자세에서 멈춘다.
+  // 준비 구간도 느리게.
+  if (p < .42) {
+    const t = THREE.MathUtils.smoothstep(
+      THREE.MathUtils.clamp(p / .42, 0, 1),
+      0,
+      1
+    );
+    return lerpPose(attack1NeutralPose, attack1LeftShoulderBackPose, t);
+  }
+
+  // 실제 베는 구간도 아직 느리게.
+  if (p < .78) {
+    const t = THREE.MathUtils.smoothstep(
+      THREE.MathUtils.clamp((p - .42) / .36, 0, 1),
+      0,
+      1
+    );
+    return lerpPose(attack1LeftShoulderBackPose, attack1FrontSlashPose, t);
+  }
+
+  // 베고 난 뒤 오른쪽 아래로 천천히 빠진다.
   const t = THREE.MathUtils.smoothstep(
-    THREE.MathUtils.clamp(p / .88, 0, 1),
+    THREE.MathUtils.clamp((p - .78) / .22, 0, 1),
     0,
     1
   );
-  return lerpPose(attack1NeutralPose, attack1LeftShoulderBackPose, t);
+  return lerpPose(attack1FrontSlashPose, attack1FollowThroughPose, t);
 }
 
 function applyAttack1Pose(pose, dt) {
   hipsRig.position.y = damp(hipsRig.position.y, 1.7, 12, dt);
   hipsRig.rotation.x = dampAxisLimited(hipsRig.rotation.x, 0, 12, 3.5, dt);
-  hipsRig.rotation.y = dampAxisLimited(hipsRig.rotation.y, 0, 12, 3.5, dt);
+  hipsRig.rotation.y = dampAxisLimited(hipsRig.rotation.y, pose.hipY, 10, 2.6, dt);
   hipsRig.rotation.z = dampAxisLimited(hipsRig.rotation.z, 0, 12, 3.5, dt);
 
-  dampRot(torsoRig, 0, 0, 0, 12, dt, 3.5);
+  dampRot(torsoRig, pose.torsoX, pose.torsoY, pose.torsoZ, 10, dt, 2.6);
 
-  // 오른팔만 아주 천천히 이동.
+  // 오른팔은 전 구간 천천히 이동시켜 궤적을 확인한다.
   dampRot(rightArmRig.shoulder, pose.rSX, pose.rSY, pose.rSZ, 9, dt, 1.75);
-  dampRot(rightArmRig.elbow, pose.rEX, 0, 0, 9, dt, 2.0);
-  dampRot(rightArmRig.wrist, 0, 0, 0, 10, dt, 2.0);
+  dampRot(rightArmRig.elbow, pose.rEX, pose.rEY, pose.rEZ, 9, dt, 2.0);
+  dampRot(rightArmRig.wrist, pose.rWX, pose.rWY, pose.rWZ, 9, dt, 1.8);
 
-  // 나머지는 중립으로 유지.
+  // 나머지는 중립에 가깝게 유지.
   dampRot(leftArmRig.shoulder, pose.lSX, pose.lSY, pose.lSZ, 12, dt, 3.5);
-  dampRot(leftArmRig.elbow, pose.lEX, 0, 0, 12, dt, 3.5);
-  dampRot(leftArmRig.wrist, 0, 0, 0, 12, dt, 3.5);
+  dampRot(leftArmRig.elbow, pose.lEX, pose.lEY, pose.lEZ, 12, dt, 3.5);
+  dampRot(leftArmRig.wrist, pose.lWX, pose.lWY, pose.lWZ, 12, dt, 3.5);
 
-  dampRot(leftLegRig.thigh, 0, 0, 0, 12, dt, 3.5);
-  dampRot(rightLegRig.thigh, 0, 0, 0, 12, dt, 3.5);
-  dampRot(leftLegRig.knee, 0, 0, 0, 12, dt, 3.5);
-  dampRot(rightLegRig.knee, 0, 0, 0, 12, dt, 3.5);
-  dampRot(leftLegRig.ankle, 0, 0, 0, 12, dt, 3.5);
-  dampRot(rightLegRig.ankle, 0, 0, 0, 12, dt, 3.5);
+  dampRot(leftLegRig.thigh, pose.lTX, 0, 0, 12, dt, 3.5);
+  dampRot(rightLegRig.thigh, pose.rTX, 0, 0, 12, dt, 3.5);
+  dampRot(leftLegRig.knee, pose.lKX, 0, 0, 12, dt, 3.5);
+  dampRot(rightLegRig.knee, pose.rKX, 0, 0, 12, dt, 3.5);
+  dampRot(leftLegRig.ankle, pose.lAX, 0, 0, 12, dt, 3.5);
+  dampRot(rightLegRig.ankle, pose.rAX, 0, 0, 12, dt, 3.5);
 
-  headRig.rotation.x = dampAxisLimited(headRig.rotation.x, 0, 10, 3.0, dt);
-  headRig.rotation.y = dampAxisLimited(headRig.rotation.y, 0, 10, 3.0, dt);
+  headRig.rotation.x = dampAxisLimited(headRig.rotation.x, pose.headX, 10, 3.0, dt);
+  headRig.rotation.y = dampAxisLimited(headRig.rotation.y, pose.headY, 10, 3.0, dt);
 
   rotateQuaternionToward(swordRoot, swordRestQuaternion, 5.0, dt);
 
