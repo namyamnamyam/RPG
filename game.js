@@ -3,6 +3,7 @@ import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.m
 const gameEl = document.getElementById('game');
 const dashPipsEl = document.getElementById('dash-pips');
 const hpEl = document.getElementById('dummy-hp');
+const playerHpEl = document.getElementById('player-hp');
 const dummyModeBtn = document.getElementById('dummy-mode');
 const autoBtn = document.getElementById('auto-btn');
 const lockBtn = document.getElementById('lock-btn');
@@ -249,25 +250,108 @@ function updateDashWind() {
   }
 }
 
-function createDummy() {
+function createGoblin() {
   const g = new THREE.Group();
-  const wood = new THREE.MeshStandardMaterial({ color: 0x8c623e, roughness: .92 });
-  mesh(new THREE.CylinderGeometry(.34, .4, 2.0, 10), wood, g, [0, 1.05, 0]);
-  mesh(new THREE.SphereGeometry(.36, 12, 8), wood, g, [0, 2.22, 0]);
-  mesh(new THREE.BoxGeometry(2.1, .15, .15), wood, g, [0, 1.55, 0]);
-  const base = mesh(new THREE.CylinderGeometry(.72, .85, .24, 14), stoneMat, g, [0, .12, 0]);
-  base.receiveShadow = true;
+
+  const green = new THREE.MeshStandardMaterial({ color: 0x6f8f3d, roughness: .88 });
+  const greenDark = new THREE.MeshStandardMaterial({ color: 0x4d6c2d, roughness: .92 });
+  const tunic = new THREE.MeshStandardMaterial({ color: 0x5b3b27, roughness: .92 });
+  const belt = new THREE.MeshStandardMaterial({ color: 0x30251e, roughness: .95 });
+  const goblinMetal = new THREE.MeshStandardMaterial({ color: 0x9ca3a5, metalness: .58, roughness: .38 });
+  const eye = new THREE.MeshStandardMaterial({ color: 0xe9d04c, emissive: 0x5a4300, emissiveIntensity: .35 });
+
+  const torso = new THREE.Group();
+  torso.position.set(0, 1.02, 0);
+  g.add(torso);
+  mesh(new THREE.BoxGeometry(.70, .72, .42), tunic, torso, [0, 0, 0]);
+  mesh(new THREE.BoxGeometry(.76, .11, .46), belt, torso, [0, -.25, 0]);
+
+  const head = new THREE.Group();
+  head.position.set(0, .63, 0);
+  torso.add(head);
+  const headMesh = mesh(new THREE.SphereGeometry(.31, 12, 9), green, head, [0, 0, 0]);
+  headMesh.scale.set(1.0, .88, .90);
+
+  // 길고 뾰족한 귀.
+  mesh(new THREE.ConeGeometry(.11, .42, 6), greenDark, head, [-.38, .02, 0], [0, 0, Math.PI / 2]);
+  mesh(new THREE.ConeGeometry(.11, .42, 6), greenDark, head, [.38, .02, 0], [0, 0, -Math.PI / 2]);
+
+  mesh(new THREE.SphereGeometry(.045, 8, 6), eye, head, [-.12, .04, .27]);
+  mesh(new THREE.SphereGeometry(.045, 8, 6), eye, head, [.12, .04, .27]);
+
+  const leftArm = new THREE.Group();
+  leftArm.position.set(.43, 1.26, 0);
+  g.add(leftArm);
+  mesh(new THREE.CapsuleGeometry(.105, .38, 4, 7), green, leftArm, [0, -.29, 0]);
+
+  const rightArm = new THREE.Group();
+  rightArm.position.set(-.43, 1.26, 0);
+  g.add(rightArm);
+  mesh(new THREE.CapsuleGeometry(.105, .38, 4, 7), green, rightArm, [0, -.29, 0]);
+
+  const swordPivot = new THREE.Group();
+  swordPivot.position.set(0, -.58, 0);
+  rightArm.add(swordPivot);
+  mesh(new THREE.BoxGeometry(.10, .22, .10), belt, swordPivot, [0, -.06, 0]);
+  mesh(new THREE.BoxGeometry(.065, .78, .06), goblinMetal, swordPivot, [0, -.52, 0]);
+  mesh(new THREE.BoxGeometry(.34, .07, .09), goblinMetal, swordPivot, [0, -.16, 0]);
+
+  const leftLeg = new THREE.Group();
+  leftLeg.position.set(.20, .66, 0);
+  g.add(leftLeg);
+  mesh(new THREE.CapsuleGeometry(.12, .34, 4, 7), greenDark, leftLeg, [0, -.27, 0]);
+
+  const rightLeg = new THREE.Group();
+  rightLeg.position.set(-.20, .66, 0);
+  g.add(rightLeg);
+  mesh(new THREE.CapsuleGeometry(.12, .34, 4, 7), greenDark, rightLeg, [0, -.27, 0]);
+
+  // 공격 직전 바닥에 뜨는 짧은 예고 링.
+  const telegraph = new THREE.Mesh(
+    new THREE.RingGeometry(.78, .96, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xff453a,
+      transparent: true,
+      opacity: .42,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  telegraph.rotation.x = -Math.PI / 2;
+  telegraph.position.y = .025;
+  telegraph.visible = false;
+  g.add(telegraph);
+
+  g.userData.rig = { torso, head, leftArm, rightArm, swordPivot, leftLeg, rightLeg, telegraph };
   g.position.set(0, 0, -2.5);
   scene.add(g);
   return g;
 }
 
-const dummy = createDummy();
-let dummyHP = 100;
-let dummyInfinite = true;
+const dummy = createGoblin();
+const GOBLIN_MAX_HP = 70;
+const GOBLIN_AGGRO = 12.5;
+const GOBLIN_SPEED = 3.4;
+const GOBLIN_ATTACK_RANGE = 1.90;
+const GOBLIN_ATTACK_DURATION = 1.05;
+const GOBLIN_HIT_AT = .53;
+const GOBLIN_DAMAGE = 12;
+
+let dummyHP = GOBLIN_MAX_HP;
 let dummyAlive = true;
 let dummyRespawn = 0;
 let dummyFlash = 0;
+let dummyState = 'chase';
+let dummyAttackT = 0;
+let dummyAttackHit = false;
+let dummyAttackCooldown = .55;
+let dummyStun = 0;
+let dummyWalkPhase = 0;
+
+const PLAYER_MAX_HP = 100;
+let playerHP = PLAYER_MAX_HP;
+let playerAlive = true;
+let playerRespawn = 0;
 
 const keys = new Set();
 let joystick = new THREE.Vector2();
@@ -329,21 +413,51 @@ function showToast(msg) {
 }
 
 function updateDummyUI() {
-  hpEl.style.width = `${dummyInfinite ? 100 : Math.max(0, dummyHP)}%`;
-  dummyModeBtn.textContent = dummyInfinite ? '∞ 무한 HP' : '♥ 100 HP';
+  hpEl.style.width = `${Math.max(0, dummyHP) / GOBLIN_MAX_HP * 100}%`;
+  playerHpEl.style.width = `${Math.max(0, playerHP) / PLAYER_MAX_HP * 100}%`;
+  dummyModeBtn.textContent = '↻ 고블린 리셋';
+}
+
+function respawnGoblin(manual = false) {
+  dummyAlive = true;
+  dummyHP = GOBLIN_MAX_HP;
+  dummyRespawn = 0;
+  dummyState = 'chase';
+  dummyAttackT = 0;
+  dummyAttackHit = false;
+  dummyAttackCooldown = .7;
+  dummyStun = 0;
+  dummy.position.set(0, 0, -2.5);
+  dummy.rotation.set(0, 0, 0);
+  dummy.scale.setScalar(1);
+  dummy.visible = true;
+  dummy.userData.rig.telegraph.visible = false;
+  updateDummyUI();
+  if (manual) showToast('고블린 재소환');
+}
+
+function respawnPlayer() {
+  playerHP = PLAYER_MAX_HP;
+  playerAlive = true;
+  playerRespawn = 0;
+  player.position.set(0, 0, 8);
+  playerYaw = Math.PI;
+  player.rotation.y = playerYaw;
+  player.visible = true;
+  velocityY = 0;
+  grounded = true;
+  invulnTime = .9;
+  updateDummyUI();
+  showToast('플레이어 부활');
 }
 
 updateDummyUI();
 updateDashUI();
 
 dummyModeBtn.addEventListener('click', () => {
-  dummyInfinite = !dummyInfinite;
-  dummyHP = 100;
-  dummyAlive = true;
-  dummy.visible = true;
-  updateDummyUI();
-  showToast(dummyInfinite ? '더미: 무한 체력' : '더미: HP 모드');
+  respawnGoblin(true);
 });
+
 
 function toggleAutoCamera() {
   autoCamera = !autoCamera;
@@ -356,7 +470,7 @@ function toggleLock() {
   locked = !locked;
   lockBtn.classList.toggle('active', locked);
   lockMarker.style.display = locked ? 'block' : 'none';
-  showToast(locked ? '더미 락온' : '락온 해제');
+  showToast(locked ? '고블린 락온' : '락온 해제');
 }
 
 autoBtn.addEventListener('pointerdown', e => {
@@ -374,7 +488,7 @@ function playerForward(out = new THREE.Vector3()) {
 }
 
 function tryDash() {
-  if (dashCharges <= 0 || dashTime > 0) return;
+  if (!playerAlive || dashCharges <= 0 || dashTime > 0) return;
   dashCharges--;
   updateDashUI();
   const m = getMoveVector();
@@ -385,7 +499,7 @@ function tryDash() {
 }
 
 function tryJump() {
-  if (!grounded) return;
+  if (!playerAlive || !grounded) return;
   velocityY = 10.4;
   grounded = false;
 }
@@ -398,6 +512,7 @@ const attackData = [
 ];
 
 function tryAttack() {
+  if (!playerAlive) return;
   const now = performance.now() / 1000;
   if (attack) {
     queuedAttack = true;
@@ -417,30 +532,69 @@ function startAttack(index) {
 
 function damageDummy(amount, finisher = false) {
   if (!dummyAlive) return;
+
   dummyFlash = .14;
+  dummyStun = finisher ? .26 : .14;
+  dummyState = 'stun';
+  dummy.userData.rig.telegraph.visible = false;
   hitPause = .045;
   shake = finisher ? .18 : .08;
 
-  if (!dummyInfinite) {
-    dummyHP -= amount;
-    if (dummyHP <= 0) {
-      dummyHP = 0;
-      dummyAlive = false;
-      dummy.visible = false;
-      dummyRespawn = 2.2;
-      locked = false;
-      lockBtn.classList.remove('active');
-      lockMarker.style.display = 'none';
-      showToast('더미 처치');
-    }
-    updateDummyUI();
+  dummyHP -= amount;
+
+  const away = dummy.position.clone().sub(player.position).setY(0);
+  if (away.lengthSq() > .001) {
+    away.normalize();
+    dummy.position.addScaledVector(away, finisher ? .72 : .16);
   }
 
-  if (finisher && dummyAlive) {
-    const away = dummy.position.clone().sub(player.position).setY(0).normalize();
-    dummy.position.addScaledVector(away, .55);
+  if (dummyHP <= 0) {
+    dummyHP = 0;
+    dummyAlive = false;
+    dummy.visible = false;
+    dummyRespawn = 2.5;
+    dummy.userData.rig.telegraph.visible = false;
+    locked = false;
+    lockBtn.classList.remove('active');
+    lockMarker.style.display = 'none';
+    showToast('고블린 처치');
   }
+
+  updateDummyUI();
 }
+
+function damagePlayer(amount) {
+  if (!playerAlive || invulnTime > 0) return false;
+
+  playerHP = Math.max(0, playerHP - amount);
+  invulnTime = .42;
+  shake = Math.max(shake, .16);
+  hitPause = .035;
+
+  const away = player.position.clone().sub(dummy.position).setY(0);
+  if (away.lengthSq() > .001) {
+    away.normalize();
+    player.position.addScaledVector(away, .42);
+  }
+
+  if (playerHP <= 0) {
+    playerAlive = false;
+    playerRespawn = 1.8;
+    player.visible = false;
+    attack = null;
+    queuedAttack = false;
+    locked = false;
+    lockBtn.classList.remove('active');
+    lockMarker.style.display = 'none';
+    showToast('쓰러짐');
+  } else {
+    showToast(`고블린 공격 -${amount}`);
+  }
+
+  updateDummyUI();
+  return true;
+}
+
 
 function testAttackHit(a) {
   if (!dummyAlive) return;
@@ -1584,6 +1738,12 @@ function updatePlayer(dt) {
   manualCamHold = Math.max(0, manualCamHold - dt);
   invulnTime = Math.max(0, invulnTime - dt);
 
+  if (!playerAlive) {
+    playerRespawn -= dt;
+    if (playerRespawn <= 0) respawnPlayer();
+    return;
+  }
+
   if (dashCharges < 3) {
     dashRecharge += dt;
     while (dashRecharge >= DASH_RECHARGE && dashCharges < 3) {
@@ -1656,6 +1816,8 @@ function updatePlayer(dt) {
 }
 
 function updateDummy(dt) {
+  const rig = dummy.userData.rig;
+
   if (dummyFlash > 0) {
     dummyFlash -= dt;
     dummy.scale.setScalar(1 + Math.sin(dummyFlash * 65) * .035);
@@ -1665,15 +1827,120 @@ function updateDummy(dt) {
 
   if (!dummyAlive) {
     dummyRespawn -= dt;
-    if (dummyRespawn <= 0) {
-      dummyAlive = true;
-      dummyHP = 100;
-      dummy.position.set(0, 0, -2.5);
-      dummy.visible = true;
-      updateDummyUI();
+    if (dummyRespawn <= 0) respawnGoblin(false);
+    return;
+  }
+
+  dummyAttackCooldown = Math.max(0, dummyAttackCooldown - dt);
+
+  if (dummyStun > 0) {
+    dummyStun -= dt;
+    rig.telegraph.visible = false;
+    rig.torso.rotation.x = damp(rig.torso.rotation.x, -.18, 18, dt);
+    rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, -.55, 18, dt);
+
+    if (dummyStun <= 0) {
+      dummyState = 'chase';
+      dummyAttackCooldown = Math.max(dummyAttackCooldown, .28);
     }
+    return;
+  }
+
+  const toPlayer = player.position.clone().sub(dummy.position);
+  toPlayer.y = 0;
+  const dist = toPlayer.length();
+  const dir = dist > .001 ? toPlayer.clone().multiplyScalar(1 / dist) : new THREE.Vector3(0, 0, 1);
+  const targetYaw = Math.atan2(dir.x, dir.z);
+  dummy.rotation.y = angleLerp(dummy.rotation.y, targetYaw, Math.min(1, dt * 8.5));
+
+  if (!playerAlive) {
+    dummyState = 'idle';
+    rig.telegraph.visible = false;
+  } else if (dummyState === 'attack') {
+    dummyAttackT += dt;
+    const p = THREE.MathUtils.clamp(dummyAttackT / GOBLIN_ATTACK_DURATION, 0, 1);
+
+    // 0~45%: 크게 뒤로 모으면서 예고. 이후 전방으로 한 번 크게 휘두른다.
+    if (p < .45) {
+      const t = THREE.MathUtils.smoothstep(p / .45, 0, 1);
+      rig.rightArm.rotation.x = THREE.MathUtils.lerp(-.25, -1.82, t);
+      rig.rightArm.rotation.z = THREE.MathUtils.lerp(-.10, .58, t);
+      rig.leftArm.rotation.x = THREE.MathUtils.lerp(.10, -.34, t);
+      rig.torso.rotation.y = THREE.MathUtils.lerp(0, -.34, t);
+      rig.torso.rotation.x = THREE.MathUtils.lerp(0, -.08, t);
+      rig.telegraph.visible = true;
+      const pulse = .92 + Math.sin(elapsed * 24) * .08;
+      rig.telegraph.scale.setScalar(pulse);
+    } else {
+      const t = THREE.MathUtils.smoothstep((p - .45) / .40, 0, 1);
+      rig.rightArm.rotation.x = THREE.MathUtils.lerp(-1.82, .62, t);
+      rig.rightArm.rotation.z = THREE.MathUtils.lerp(.58, -1.12, t);
+      rig.leftArm.rotation.x = THREE.MathUtils.lerp(-.34, .28, t);
+      rig.torso.rotation.y = THREE.MathUtils.lerp(-.34, .52, t);
+      rig.torso.rotation.x = THREE.MathUtils.lerp(-.08, .10, t);
+      rig.telegraph.visible = false;
+    }
+
+    if (!dummyAttackHit && dummyAttackT >= GOBLIN_HIT_AT) {
+      dummyAttackHit = true;
+
+      const nowToPlayer = player.position.clone().sub(dummy.position).setY(0);
+      const nowDist = nowToPlayer.length();
+
+      if (nowDist > .001) {
+        nowToPlayer.normalize();
+        const forward = new THREE.Vector3(Math.sin(dummy.rotation.y), 0, Math.cos(dummy.rotation.y));
+        const facing = forward.dot(nowToPlayer);
+
+        // 거리를 벌리거나 옆/뒤로 피하면 그대로 헛친다.
+        if (nowDist <= 2.15 && facing >= .42) damagePlayer(GOBLIN_DAMAGE);
+      }
+    }
+
+    if (dummyAttackT >= GOBLIN_ATTACK_DURATION) {
+      dummyState = 'chase';
+      dummyAttackT = 0;
+      dummyAttackHit = false;
+      dummyAttackCooldown = .48;
+      rig.telegraph.visible = false;
+    }
+  } else if (dist <= GOBLIN_ATTACK_RANGE && dummyAttackCooldown <= 0) {
+    dummyState = 'attack';
+    dummyAttackT = 0;
+    dummyAttackHit = false;
+  } else if (dist <= GOBLIN_AGGRO) {
+    dummyState = 'chase';
+
+    if (dist > 1.55) {
+      dummy.position.addScaledVector(dir, GOBLIN_SPEED * dt);
+      dummy.position.x = THREE.MathUtils.clamp(dummy.position.x, -14.2, 14.2);
+      dummy.position.z = THREE.MathUtils.clamp(dummy.position.z, -14.2, 14.2);
+    }
+
+    dummyWalkPhase += dt * 11;
+    const step = Math.sin(dummyWalkPhase);
+    rig.leftLeg.rotation.x = damp(rig.leftLeg.rotation.x, step * .62, 16, dt);
+    rig.rightLeg.rotation.x = damp(rig.rightLeg.rotation.x, -step * .62, 16, dt);
+    rig.leftArm.rotation.x = damp(rig.leftArm.rotation.x, -step * .38, 16, dt);
+    rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, step * .34 - .28, 16, dt);
+    rig.rightArm.rotation.z = damp(rig.rightArm.rotation.z, -.12, 16, dt);
+    rig.torso.rotation.y = damp(rig.torso.rotation.y, 0, 16, dt);
+    rig.torso.rotation.x = damp(rig.torso.rotation.x, .04, 16, dt);
+    rig.telegraph.visible = false;
+  } else {
+    dummyState = 'idle';
+    const idle = Math.sin(elapsed * 2.6) * .04;
+    rig.leftLeg.rotation.x = damp(rig.leftLeg.rotation.x, 0, 10, dt);
+    rig.rightLeg.rotation.x = damp(rig.rightLeg.rotation.x, 0, 10, dt);
+    rig.leftArm.rotation.x = damp(rig.leftArm.rotation.x, idle, 10, dt);
+    rig.rightArm.rotation.x = damp(rig.rightArm.rotation.x, -.24 - idle, 10, dt);
+    rig.rightArm.rotation.z = damp(rig.rightArm.rotation.z, -.12, 10, dt);
+    rig.torso.rotation.y = damp(rig.torso.rotation.y, 0, 10, dt);
+    rig.torso.rotation.x = damp(rig.torso.rotation.x, 0, 10, dt);
+    rig.telegraph.visible = false;
   }
 }
+
 
 const tmpV = new THREE.Vector3();
 
@@ -1692,7 +1959,7 @@ function updateCamera(dt) {
 
   const look = tmpV.copy(player.position).add(new THREE.Vector3(0, 2.05, 0));
   if (locked && dummyAlive) {
-    look.lerp(dummy.position.clone().add(new THREE.Vector3(0, 1.2, 0)), .22);
+    look.lerp(dummy.position.clone().add(new THREE.Vector3(0, 1.05, 0)), .22);
   }
   camera.lookAt(look);
 
@@ -1703,7 +1970,7 @@ function updateCamera(dt) {
   }
 
   if (locked && dummyAlive) {
-    const p = dummy.position.clone().add(new THREE.Vector3(0, 2.65, 0)).project(camera);
+    const p = dummy.position.clone().add(new THREE.Vector3(0, 1.75, 0)).project(camera);
     lockMarker.style.left = `${(p.x * .5 + .5) * innerWidth}px`;
     lockMarker.style.top = `${(-p.y * .5 + .5) * innerHeight}px`;
   }
