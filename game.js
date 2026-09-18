@@ -391,7 +391,7 @@ function tryJump() {
 }
 
 const attackData = [
-  { duration: 1.8, hitAt: 9.0, damage: 10, range: 2.5, arc: 1.75, finisher: false },
+  { duration: 2.2, hitAt: 9.0, damage: 10, range: 2.5, arc: 1.75, finisher: false },
   { duration: .46, hitAt: .25, damage: 12, range: 2.55, arc: 1.85, finisher: false },
   { duration: .54, hitAt: .30, damage: 14, range: 2.75, arc: 1.65, finisher: false },
   { duration: .72, hitAt: .42, damage: 22, range: 3.25, arc: 2.75, finisher: true }
@@ -1289,17 +1289,18 @@ const attack1NeutralPose = {
 const attack1LeftShoulderBackPose = {
   ...attack1NeutralPose,
 
-  // 어깨를 몸 반대편으로 크게 넘겨 오른손이 왼쪽 어깨 쪽으로 간다.
-  rSX: -.58,
-  rSY: .38,
-  rSZ: -1.38,
+  // 오른쪽 팔꿈치 안쪽이 얼굴 앞까지 올라오도록
+  // 위팔을 앞으로 들면서 몸 앞을 가로질러 높게 접는다.
+  rSX: -.96,
+  rSY: .24,
+  rSZ: -2.08,
 
-  // 팔꿈치를 깊게 접어 손/검을 실제 화면 기준 왼쪽 어깨 가까이 끌어온다.
-  rEX: -1.82,
+  // 팔꿈치를 깊게 접어 전완/손/검이 왼쪽 어깨 뒤로 따라가게 한다.
+  rEX: -2.08,
   rEY: 0,
   rEZ: 0,
 
-  // 손목은 일단 중립. 검 방향 보정은 아직 하지 않는다.
+  // 손목은 아직 중립. 팔꿈치/어깨 경로만 확인한다.
   rWX: 0,
   rWY: 0,
   rWZ: 0
