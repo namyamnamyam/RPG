@@ -5,12 +5,12 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
   <meta name="theme-color" content="#101318" />
   <title>RPG Prototype</title>
-  <link rel="stylesheet" href="/style.css?v=sword-skills-1" />
+  <link rel="stylesheet" href="/style.css?v=bow-equipment-1" />
 </head>
 <body>
   <div id="game"></div>
   <div id="hud">
-    <div class="panel title-panel"><b>RPG PROTOTYPE</b><span>장검 · 4단 콤보 · 3스택 대쉬</span></div>
+    <div class="panel title-panel"><b>RPG PROTOTYPE</b><span>장검 / 활 · 스킬 · 3스택 대쉬</span></div>
     <div class="panel status-panel">
       <div class="row"><span>대쉬</span><div id="dash-pips" class="pips"></div></div>
       <div class="row hp-row"><span>내 HP</span><div class="hp-track"><div id="player-hp" class="hp-fill"></div></div></div>
@@ -26,6 +26,7 @@
   <div id="right-controls">
     <button id="auto-btn" class="utility-btn active">AUTO CAM</button>
     <button id="lock-btn" class="utility-btn">LOCK</button>
+    <button id="weapon-switch" class="utility-btn weapon-btn">장비: 장검</button>
     <div id="skill-cluster">
       <button id="skill-dash-slash" class="skill-btn"><span>돌진베기</span><small class="skill-cd">READY</small></button>
       <button id="skill-sword-wave" class="skill-btn"><span>검기</span><small class="skill-cd">READY</small></button>
@@ -35,7 +36,7 @@
     <button id="dash-btn" class="action-btn dash">DASH</button>
     <button id="attack-btn" class="action-btn attack">ATK</button>
   </div>
-  <div id="desktop-help">WASD 이동 · J 공격 · 1 돌진베기 · 2 검기 · 3 회전격 · Shift 대쉬 · Space 점프 · L 락온</div>
-  <script type="module" src="/game.js?v=sword-skills-1"></script>
+  <div id="desktop-help">WASD 이동 · J 공격 · Q 장비전환 · 1/2/3 장검 스킬 · Shift 대쉬 · Space 점프 · L 락온</div>
+  <script type="module" src="/game.js?v=bow-equipment-1"></script>
 </body>
 </html>
