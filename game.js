@@ -1289,22 +1289,22 @@ const attack1NeutralPose = {
 const attack1LeftShoulderBackPose = {
   ...attack1NeutralPose,
 
-  // 오른쪽 팔꿈치 안쪽이 얼굴 앞까지 올라오도록
-  // 위팔을 앞으로 들면서 몸 앞을 가로질러 높게 접는다.
-  rSX: -.96,
-  rSY: .24,
-  rSZ: -2.08,
+  // 오른팔을 위로 경례하듯 들지 않고,
+  // 가슴 앞을 가로질러 실제 화면 기준 왼쪽 어깨로 보낸다.
+  rSX: -.34,
+  rSY: .18,
+  rSZ: -1.72,
 
-  // 팔꿈치를 깊게 접어 전완/손/검이 왼쪽 어깨 뒤로 따라가게 한다.
+  // 팔꿈치를 깊게 접어 오른손이 왼쪽 어깨 가까이 붙게 한다.
   rEX: -2.08,
   rEY: 0,
   rEZ: 0,
 
-  // 손목은 아직 중립. 팔꿈치/어깨 경로만 확인한다.
-  rWX: 0,
-  rWY: 0,
-  rWZ: 0
-};
+  // 손목은 어깨에 자연스럽게 얹히는 정도만 보정.
+  rWX: .10,
+  rWY: .04,
+  rWZ: -.18
+}
 
 function lerpPose(a, b, t) {
   const out = {};
