@@ -299,6 +299,10 @@ const DASH_SPEED = 22.0;
 const IFRAME = .18;
 const gravity = 22;
 
+// 공격 모션 제작 단계: 큰 실루엣을 먼저 잡는다.
+const USE_SELF_COLLISION = false;
+const USE_ATTACK_IK = false;
+
 for (let i = 0; i < 3; i++) {
   const p = document.createElement('div');
   p.className = 'pip';
@@ -1259,6 +1263,143 @@ function enforceSelfCollision() {
 }
 
 
+// ---------- Attack 1 manual key poses ----------
+// 1타는 IK가 아니라 사람이 직접 잡은 4개 키포즈를 순서대로 통과한다.
+// A 준비 -> B 진입 -> C 타격 -> D 팔로스루
+const attack1Poses = {
+  A: {
+    hipY: -.18,
+    torsoX: -.02, torsoY: -.28, torsoZ: -.04,
+
+    rSX: -.35, rSY: .40, rSZ: -1.20,
+    rEX: -1.10, rEY: 0, rEZ: 0,
+    rWX: .08, rWY: .10, rWZ: .10,
+
+    lSX: .15, lSY: -.05, lSZ: .15,
+    lEX: -.45, lEY: 0, lEZ: 0,
+    lWX: 0, lWY: 0, lWZ: 0,
+
+    lTX: .02, rTX: -.05,
+    lKX: .08, rKX: .10,
+    lAX: 0, rAX: 0,
+
+    headX: 0, headY: -.08
+  },
+
+  B: {
+    hipY: -.04,
+    torsoX: .02, torsoY: -.05, torsoZ: 0,
+
+    rSX: -.55, rSY: .10, rSZ: -.65,
+    rEX: -.62, rEY: 0, rEZ: 0,
+    rWX: 0, rWY: 0, rWZ: 0,
+
+    lSX: .08, lSY: 0, lSZ: .10,
+    lEX: -.30, lEY: 0, lEZ: 0,
+    lWX: 0, lWY: 0, lWZ: 0,
+
+    lTX: 0, rTX: 0,
+    lKX: .04, rKX: .04,
+    lAX: 0, rAX: 0,
+
+    headX: 0, headY: 0
+  },
+
+  C: {
+    hipY: .02,
+    torsoX: .06, torsoY: .03, torsoZ: .01,
+
+    rSX: -.68, rSY: -.08, rSZ: -.30,
+    rEX: -.28, rEY: 0, rEZ: 0,
+    rWX: -.04, rWY: 0, rWZ: -.02,
+
+    lSX: .02, lSY: .03, lSZ: .08,
+    lEX: -.18, lEY: 0, lEZ: 0,
+    lWX: 0, lWY: 0, lWZ: 0,
+
+    lTX: -.02, rTX: .03,
+    lKX: .03, rKX: .03,
+    lAX: 0, rAX: 0,
+
+    headX: 0, headY: .02
+  },
+
+  D: {
+    hipY: .08,
+    torsoX: .08, torsoY: .10, torsoZ: .02,
+
+    rSX: -.58, rSY: -.30, rSZ: -.18,
+    rEX: -.08, rEY: 0, rEZ: 0,
+    rWX: -.08, rWY: -.06, rWZ: -.08,
+
+    lSX: -.02, lSY: .02, lSZ: .06,
+    lEX: -.14, lEY: 0, lEZ: 0,
+    lWX: 0, lWY: 0, lWZ: 0,
+
+    lTX: -.03, rTX: .04,
+    lKX: .02, rKX: .02,
+    lAX: 0, rAX: 0,
+
+    headX: 0, headY: .04
+  }
+};
+
+function lerpPose(a, b, t) {
+  const out = {};
+  for (const key of Object.keys(a)) {
+    out[key] = THREE.MathUtils.lerp(a[key], b[key], t);
+  }
+  return out;
+}
+
+function getAttack1Pose(p) {
+  // 준비 자세로 크게 들어간 뒤, 타격 구간을 가장 빠르게 통과한다.
+  if (p < .30) {
+    const t = THREE.MathUtils.smoothstep(p / .30, 0, 1);
+    return lerpPose(attack1Poses.A, attack1Poses.B, t);
+  }
+
+  if (p < .58) {
+    const t = THREE.MathUtils.smoothstep((p - .30) / .28, 0, 1);
+    return lerpPose(attack1Poses.B, attack1Poses.C, t);
+  }
+
+  const t = THREE.MathUtils.smoothstep((p - .58) / .42, 0, 1);
+  return lerpPose(attack1Poses.C, attack1Poses.D, t);
+}
+
+function applyAttack1Pose(pose, dt) {
+  hipsRig.position.y = damp(hipsRig.position.y, 1.7, 12, dt);
+  hipsRig.rotation.x = dampAxisLimited(hipsRig.rotation.x, 0, 12, 5.0, dt);
+  hipsRig.rotation.y = dampAxisLimited(hipsRig.rotation.y, pose.hipY, 13, 4.8, dt);
+  hipsRig.rotation.z = dampAxisLimited(hipsRig.rotation.z, 0, 12, 5.0, dt);
+
+  dampRot(torsoRig, pose.torsoX, pose.torsoY, pose.torsoZ, 14, dt, 6.0);
+
+  dampRot(rightArmRig.shoulder, pose.rSX, pose.rSY, pose.rSZ, 16, dt, 7.0);
+  dampRot(rightArmRig.elbow, pose.rEX, pose.rEY, pose.rEZ, 17, dt, 7.4);
+  dampRot(rightArmRig.wrist, pose.rWX, pose.rWY, pose.rWZ, 18, dt, 7.8);
+
+  dampRot(leftArmRig.shoulder, pose.lSX, pose.lSY, pose.lSZ, 14, dt, 6.2);
+  dampRot(leftArmRig.elbow, pose.lEX, pose.lEY, pose.lEZ, 15, dt, 6.5);
+  dampRot(leftArmRig.wrist, pose.lWX, pose.lWY, pose.lWZ, 16, dt, 6.8);
+
+  dampRot(leftLegRig.thigh, pose.lTX, 0, 0, 13, dt, 5.2);
+  dampRot(rightLegRig.thigh, pose.rTX, 0, 0, 13, dt, 5.2);
+  dampRot(leftLegRig.knee, pose.lKX, 0, 0, 14, dt, 5.5);
+  dampRot(rightLegRig.knee, pose.rKX, 0, 0, 14, dt, 5.5);
+  dampRot(leftLegRig.ankle, pose.lAX, 0, 0, 14, dt, 5.5);
+  dampRot(rightLegRig.ankle, pose.rAX, 0, 0, 14, dt, 5.5);
+
+  headRig.rotation.x = dampAxisLimited(headRig.rotation.x, pose.headX, 10, 4.0, dt);
+  headRig.rotation.y = dampAxisLimited(headRig.rotation.y, pose.headY, 10, 4.0, dt);
+
+  // 검은 손에 고정된 기본 그립을 유지. 검끝 방향 미세조정은 큰 모션 확정 후 한다.
+  rotateQuaternionToward(swordRoot, swordRestQuaternion, 8.0, dt);
+
+  applyHumanJointLimits();
+}
+
 function animateRig(dt, moving) {
   const speed = 15;
   const run = moving && grounded && dashTime <= 0 && !attack;
@@ -1266,6 +1407,13 @@ function animateRig(dt, moving) {
   const step = run ? Math.sin(cycle) : 0;
   const step2 = run ? Math.sin(cycle + Math.PI) : 0;
   const bob = run ? Math.abs(Math.sin(cycle * .5)) * .045 : Math.sin(elapsed * 1.8) * .012;
+
+  // 1타는 기존 IK/미러/자기충돌 체인을 완전히 우회한다.
+  if (attack && attack.index === 0 && !USE_ATTACK_IK) {
+    const p = Math.min(1, attack.t / attack.duration);
+    applyAttack1Pose(getAttack1Pose(p), dt);
+    return;
+  }
 
   hipsRig.position.y = damp(hipsRig.position.y, 1.7 + bob, 10, dt);
   if (!attack) hipsRig.rotation.y = damp(hipsRig.rotation.y, run ? -step * .05 : 0, 10, dt);
@@ -1443,8 +1591,8 @@ function animateRig(dt, moving) {
   // 어떤 애니메이션/IK도 이 선을 넘어 인간 관절 범위를 벗어날 수 없다.
   applyHumanJointLimits();
 
-  // 관절 사이의 실제 신체/무기 부위는 서로 관통할 수 없다.
-  enforceSelfCollision();
+  // 모션 실루엣 확정 전까지 자기충돌은 꺼둔다.
+  if (USE_SELF_COLLISION) enforceSelfCollision();
 }
 function updatePlayer(dt) {
   elapsed += dt;
