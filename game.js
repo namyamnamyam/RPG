@@ -7,6 +7,9 @@ const playerHpEl = document.getElementById('player-hp');
 const dummyModeBtn = document.getElementById('dummy-mode');
 const autoBtn = document.getElementById('auto-btn');
 const lockBtn = document.getElementById('lock-btn');
+const skillDashSlashBtn = document.getElementById('skill-dash-slash');
+const skillSwordWaveBtn = document.getElementById('skill-sword-wave');
+const skillSpinBtn = document.getElementById('skill-spin');
 const lockMarker = document.getElementById('lock-marker');
 const toast = document.getElementById('toast');
 
@@ -388,6 +391,213 @@ const DASH_SPEED = 22.0;
 const IFRAME = .18;
 const gravity = 22;
 
+const skillDefs = {
+  dashSlash: { name: '돌진베기', cooldown: 3.2, duration: .56 },
+  swordWave: { name: '검기', cooldown: 4.2, duration: .52 },
+  spinSlash: { name: '회전격', cooldown: 5.6, duration: .72 }
+};
+
+const skillCooldowns = {
+  dashSlash: 0,
+  swordWave: 0,
+  spinSlash: 0
+};
+
+const skillButtons = {
+  dashSlash: skillDashSlashBtn,
+  swordWave: skillSwordWaveBtn,
+  spinSlash: skillSpinBtn
+};
+
+let skillAction = null;
+const skillProjectiles = [];
+
+function updateSkillUI() {
+  for (const [type, btn] of Object.entries(skillButtons)) {
+    const left = Math.max(0, skillCooldowns[type]);
+    const cd = btn.querySelector('.skill-cd');
+    const cooling = left > .04;
+    btn.classList.toggle('cooling', cooling);
+    btn.disabled = cooling || !playerAlive;
+    if (cd) cd.textContent = cooling ? left.toFixed(1) : 'READY';
+  }
+}
+
+function canStartSkill(type) {
+  if (!playerAlive || skillAction || attack || dashTime > 0) return false;
+  return skillCooldowns[type] <= 0;
+}
+
+function startSkill(type) {
+  if (!canStartSkill(type)) return;
+
+  const def = skillDefs[type];
+  let dir = playerForward(new THREE.Vector3()).normalize();
+
+  // 락온 상태에서는 돌진/검기를 고블린 방향에 맞춘다.
+  if (dummyAlive && locked && type !== 'spinSlash') {
+    const toTarget = dummy.position.clone().sub(player.position).setY(0);
+    if (toTarget.lengthSq() > .001) dir.copy(toTarget.normalize());
+  }
+
+  const baseYaw = Math.atan2(dir.x, dir.z);
+  if (type !== 'spinSlash') {
+    playerYaw = baseYaw;
+    player.rotation.y = playerYaw;
+  }
+
+  skillAction = {
+    type,
+    t: 0,
+    duration: def.duration,
+    hit: false,
+    spawned: false,
+    dir,
+    baseYaw: playerYaw
+  };
+
+  skillCooldowns[type] = def.cooldown;
+  attack = null;
+  queuedAttack = false;
+  comboNext = 0;
+  comboExpire = 0;
+
+  showToast(def.name);
+  updateSkillUI();
+}
+
+function hitEnemyCone(range, arc, damage, finisher = false) {
+  if (!dummyAlive) return false;
+
+  const to = dummy.position.clone().sub(player.position).setY(0);
+  const dist = to.length();
+  if (dist > range || dist <= .001) return false;
+
+  to.normalize();
+  const forward = playerForward(new THREE.Vector3());
+  const angle = Math.acos(THREE.MathUtils.clamp(forward.dot(to), -1, 1));
+  if (angle > arc * .5) return false;
+
+  damageDummy(damage, finisher);
+  return true;
+}
+
+function spawnSwordWave(dir) {
+  const geo = new THREE.RingGeometry(.24, .78, 32, 1, -.88, 1.76);
+  const mat = new THREE.MeshBasicMaterial({
+    color: 0x8fe8ff,
+    transparent: true,
+    opacity: .82,
+    side: THREE.DoubleSide,
+    depthWrite: false
+  });
+
+  const wave = new THREE.Mesh(geo, mat);
+  const yaw = Math.atan2(dir.x, dir.z);
+  wave.rotation.y = yaw;
+  wave.rotation.z = -.12;
+  wave.position.copy(player.position)
+    .add(new THREE.Vector3(0, 1.45, 0))
+    .addScaledVector(dir, 1.0);
+  wave.scale.set(1.35, 1.05, 1);
+  scene.add(wave);
+
+  skillProjectiles.push({
+    mesh: wave,
+    dir: dir.clone(),
+    life: .86,
+    maxLife: .86,
+    speed: 16.5,
+    hit: false
+  });
+}
+
+function updateSwordWaves(dt) {
+  for (let i = skillProjectiles.length - 1; i >= 0; i--) {
+    const wave = skillProjectiles[i];
+    wave.life -= dt;
+    wave.mesh.position.addScaledVector(wave.dir, wave.speed * dt);
+    wave.mesh.rotation.z -= dt * 4.5;
+    wave.mesh.material.opacity = .82 * THREE.MathUtils.clamp(wave.life / .24, 0, 1);
+
+    if (!wave.hit && dummyAlive) {
+      const dx = dummy.position.x - wave.mesh.position.x;
+      const dz = dummy.position.z - wave.mesh.position.z;
+      const dy = (dummy.position.y + 1.05) - wave.mesh.position.y;
+      if (dx * dx + dz * dz < 1.05 * 1.05 && Math.abs(dy) < 1.35) {
+        wave.hit = true;
+        damageDummy(22, false);
+      }
+    }
+
+    if (wave.life <= 0) {
+      scene.remove(wave.mesh);
+      wave.mesh.geometry.dispose();
+      wave.mesh.material.dispose();
+      skillProjectiles.splice(i, 1);
+    }
+  }
+}
+
+function updateSkills(dt) {
+  for (const type of Object.keys(skillCooldowns)) {
+    skillCooldowns[type] = Math.max(0, skillCooldowns[type] - dt);
+  }
+
+  updateSwordWaves(dt);
+
+  if (!skillAction) {
+    updateSkillUI();
+    return;
+  }
+
+  const s = skillAction;
+  s.t += dt;
+  const p = THREE.MathUtils.clamp(s.t / s.duration, 0, 1);
+
+  if (s.type === 'dashSlash') {
+    // 짧고 폭발적으로 접근한 뒤 크게 한 번 벤다.
+    if (s.t <= .28) {
+      player.position.addScaledVector(s.dir, 15.5 * dt);
+      player.position.x = THREE.MathUtils.clamp(player.position.x, -48, 48);
+      player.position.z = THREE.MathUtils.clamp(player.position.z, -48, 48);
+    }
+
+    if (!s.hit && s.t >= .24) {
+      s.hit = true;
+      hitEnemyCone(3.05, 2.0, 28, false);
+      shake = Math.max(shake, .12);
+    }
+  } else if (s.type === 'swordWave') {
+    if (!s.spawned && s.t >= .20) {
+      s.spawned = true;
+      spawnSwordWave(s.dir);
+      shake = Math.max(shake, .05);
+    }
+  } else if (s.type === 'spinSlash') {
+    // 캐릭터 자체를 한 바퀴 돌려 360도 회전베기 실루엣을 확실하게 만든다.
+    const spinEase = p < .12
+      ? p / .12 * .10
+      : .10 + THREE.MathUtils.smoothstep((p - .12) / .88, 0, 1) * .90;
+    player.rotation.y = s.baseYaw + spinEase * Math.PI * 2;
+
+    if (!s.hit && s.t >= .34) {
+      s.hit = true;
+      if (dummyAlive && dummy.position.distanceTo(player.position) <= 3.35) {
+        damageDummy(32, true);
+      }
+      shake = Math.max(shake, .18);
+    }
+  }
+
+  if (s.t >= s.duration) {
+    player.rotation.y = playerYaw;
+    skillAction = null;
+  }
+
+  updateSkillUI();
+}
+
 // 공격 모션 제작 단계: 큰 실루엣을 먼저 잡는다.
 const USE_SELF_COLLISION = false;
 const USE_ATTACK_IK = false;
@@ -449,6 +659,7 @@ function respawnPlayer() {
   playerYaw = Math.PI;
   player.rotation.y = playerYaw;
   player.visible = true;
+  skillAction = null;
   velocityY = 0;
   grounded = true;
   invulnTime = .9;
@@ -458,6 +669,7 @@ function respawnPlayer() {
 
 updateDummyUI();
 updateDashUI();
+updateSkillUI();
 
 dummyModeBtn.addEventListener('click', () => {
   respawnGoblin(true);
@@ -493,7 +705,7 @@ function playerForward(out = new THREE.Vector3()) {
 }
 
 function tryDash() {
-  if (!playerAlive || dashCharges <= 0 || dashTime > 0) return;
+  if (!playerAlive || skillAction || dashCharges <= 0 || dashTime > 0) return;
   dashCharges--;
   updateDashUI();
   const m = getMoveVector();
@@ -504,7 +716,7 @@ function tryDash() {
 }
 
 function tryJump() {
-  if (!playerAlive || !grounded) return;
+  if (!playerAlive || skillAction || !grounded) return;
   velocityY = 10.4;
   grounded = false;
 }
@@ -517,7 +729,7 @@ const attackData = [
 ];
 
 function tryAttack() {
-  if (!playerAlive) return;
+  if (!playerAlive || skillAction) return;
   const now = performance.now() / 1000;
   if (attack) {
     queuedAttack = true;
@@ -586,6 +798,7 @@ function damagePlayer(amount) {
     playerAlive = false;
     playerRespawn = 1.8;
     player.visible = false;
+    skillAction = null;
     attack = null;
     queuedAttack = false;
     locked = false;
@@ -721,6 +934,21 @@ document.getElementById('jump-btn').addEventListener('pointerdown', e => {
   tryJump();
 });
 
+skillDashSlashBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  startSkill('dashSlash');
+});
+
+skillSwordWaveBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  startSkill('swordWave');
+});
+
+skillSpinBtn.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  startSkill('spinSlash');
+});
+
 addEventListener('keydown', e => {
   keys.add(e.code);
   if (e.repeat) return;
@@ -730,6 +958,9 @@ addEventListener('keydown', e => {
     e.preventDefault();
     tryJump();
   }
+  if (e.code === 'Digit1') startSkill('dashSlash');
+  if (e.code === 'Digit2') startSkill('swordWave');
+  if (e.code === 'Digit3') startSkill('spinSlash');
   if (e.code === 'KeyL') toggleLock();
   if (e.code === 'KeyC') toggleAutoCamera();
 });
@@ -1545,6 +1776,38 @@ function applyAttack1Pose(pose, dt) {
 
 function animateRig(dt, moving) {
   const speed = attack ? 24 : 15;
+
+  if (skillAction) {
+    const p = THREE.MathUtils.clamp(skillAction.t / skillAction.duration, 0, 1);
+
+    if (skillAction.type === 'dashSlash' || skillAction.type === 'swordWave') {
+      applyAttack1Pose(getAttack1Pose(p), dt);
+      return;
+    }
+
+    if (skillAction.type === 'spinSlash') {
+      hipsRig.position.y = damp(hipsRig.position.y, 1.62, 24, dt);
+      dampRot(torsoRig, .08, .34, -.12, 26, dt, 15);
+
+      // 검 든 오른팔을 바깥으로 크게 뻗어 회전 반경을 키운다.
+      dampRot(rightArmRig.shoulder, -.34, -.72, -1.62, 28, dt, 17);
+      dampRot(rightArmRig.elbow, -.08, 0, 0, 30, dt, 18);
+      dampRot(rightArmRig.wrist, -.10, -.18, -.16, 30, dt, 18);
+
+      // 반대팔은 균형을 잡으며 반대 방향으로 펼친다.
+      dampRot(leftArmRig.shoulder, -.18, .42, .92, 24, dt, 14);
+      dampRot(leftArmRig.elbow, -.36, 0, 0, 24, dt, 14);
+      dampRot(leftArmRig.wrist, 0, 0, .10, 24, dt, 14);
+
+      dampRot(leftLegRig.thigh, -.18, 0, 0, 24, dt, 12);
+      dampRot(rightLegRig.thigh, .16, 0, 0, 24, dt, 12);
+      dampRot(leftLegRig.knee, .26, 0, 0, 24, dt, 12);
+      dampRot(rightLegRig.knee, .18, 0, 0, 24, dt, 12);
+      rotateQuaternionToward(swordRoot, swordRestQuaternion, 18, dt);
+      applyHumanJointLimits();
+      return;
+    }
+  }
   const attackRate = attack ? 14 : 7.2;
   const run = moving && grounded && dashTime <= 0 && !attack;
   const cycle = elapsed * 9.5;
@@ -1762,7 +2025,9 @@ function updatePlayer(dt) {
   const move = getMoveVector();
   const moving = move.lengthSq() > .02;
 
-  if (dashTime > 0) {
+  if (skillAction) {
+    // 스킬 자체 이동/회전은 updateSkills에서 처리한다.
+  } else if (dashTime > 0) {
     dashTime -= dt;
     player.position.addScaledVector(dashDir, DASH_SPEED * dt);
     playerYaw = angleLerp(playerYaw, Math.atan2(dashDir.x, dashDir.z), Math.min(1, dt * 18));
@@ -1996,6 +2261,7 @@ function frame(now) {
   }
 
   updatePlayer(dt);
+  updateSkills(dt);
   updateDummy(dt);
   updateCamera(dt);
   renderer.render(scene, camera);
