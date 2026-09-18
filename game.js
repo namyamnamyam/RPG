@@ -391,7 +391,7 @@ function tryJump() {
 }
 
 const attackData = [
-  { duration: .76, hitAt: .44, damage: 10, range: 2.5, arc: 1.75, finisher: false },
+  { duration: 2.0, hitAt: 1.0, damage: 10, range: 2.5, arc: 1.75, finisher: false },
   { duration: .46, hitAt: .25, damage: 12, range: 2.55, arc: 1.85, finisher: false },
   { duration: .54, hitAt: .30, damage: 14, range: 2.75, arc: 1.65, finisher: false },
   { duration: .72, hitAt: .42, damage: 22, range: 3.25, arc: 2.75, finisher: true }
@@ -1264,84 +1264,44 @@ function enforceSelfCollision() {
 
 
 // ---------- Attack 1 manual key poses ----------
-// 1타는 IK가 아니라 사람이 직접 잡은 4개 키포즈를 순서대로 통과한다.
-// A 준비 -> B 진입 -> C 타격 -> D 팔로스루
-const attack1Poses = {
-  A: {
-    hipY: -.18,
-    torsoX: -.02, torsoY: -.28, torsoZ: -.04,
+// 디버그용 단순 모션:
+// 오른팔을 오른쪽으로 천천히 들어 올렸다가 천천히 내린다.
+// 다른 관절은 최대한 중립 상태를 유지한다.
+const attack1NeutralPose = {
+  hipY: 0,
+  torsoX: 0, torsoY: 0, torsoZ: 0,
 
-    rSX: -.35, rSY: .40, rSZ: -1.20,
-    rEX: -1.10, rEY: 0, rEZ: 0,
-    rWX: .08, rWY: .10, rWZ: .10,
+  rSX: -.08, rSY: 0, rSZ: -.08,
+  rEX: -.18, rEY: 0, rEZ: 0,
+  rWX: 0, rWY: 0, rWZ: 0,
 
-    lSX: .15, lSY: -.05, lSZ: .15,
-    lEX: -.45, lEY: 0, lEZ: 0,
-    lWX: 0, lWY: 0, lWZ: 0,
+  lSX: .08, lSY: 0, lSZ: .08,
+  lEX: -.12, lEY: 0, lEZ: 0,
+  lWX: 0, lWY: 0, lWZ: 0,
 
-    lTX: .02, rTX: -.05,
-    lKX: .08, rKX: .10,
-    lAX: 0, rAX: 0,
+  lTX: 0, rTX: 0,
+  lKX: 0, rKX: 0,
+  lAX: 0, rAX: 0,
 
-    headX: 0, headY: -.08
-  },
+  headX: 0, headY: 0
+};
 
-  B: {
-    hipY: -.04,
-    torsoX: .02, torsoY: -.05, torsoZ: 0,
+const attack1RightArmRaisedPose = {
+  ...attack1NeutralPose,
 
-    rSX: -.55, rSY: .10, rSZ: -.65,
-    rEX: -.62, rEY: 0, rEZ: 0,
-    rWX: 0, rWY: 0, rWZ: 0,
+  // visual-right arm: local -Z 회전으로 오른쪽 측면까지 들어 올린다.
+  rSX: 0,
+  rSY: 0,
+  rSZ: -1.48,
 
-    lSX: .08, lSY: 0, lSZ: .10,
-    lEX: -.30, lEY: 0, lEZ: 0,
-    lWX: 0, lWY: 0, lWZ: 0,
+  // 팔꿈치는 자연스럽게 아주 조금 굽힌 채 유지.
+  rEX: -.22,
+  rEY: 0,
+  rEZ: 0,
 
-    lTX: 0, rTX: 0,
-    lKX: .04, rKX: .04,
-    lAX: 0, rAX: 0,
-
-    headX: 0, headY: 0
-  },
-
-  C: {
-    hipY: .02,
-    torsoX: .06, torsoY: .03, torsoZ: .01,
-
-    rSX: -.68, rSY: -.08, rSZ: -.30,
-    rEX: -.28, rEY: 0, rEZ: 0,
-    rWX: -.04, rWY: 0, rWZ: -.02,
-
-    lSX: .02, lSY: .03, lSZ: .08,
-    lEX: -.18, lEY: 0, lEZ: 0,
-    lWX: 0, lWY: 0, lWZ: 0,
-
-    lTX: -.02, rTX: .03,
-    lKX: .03, rKX: .03,
-    lAX: 0, rAX: 0,
-
-    headX: 0, headY: .02
-  },
-
-  D: {
-    hipY: .08,
-    torsoX: .08, torsoY: .10, torsoZ: .02,
-
-    rSX: -.58, rSY: -.30, rSZ: -.18,
-    rEX: -.08, rEY: 0, rEZ: 0,
-    rWX: -.08, rWY: -.06, rWZ: -.08,
-
-    lSX: -.02, lSY: .02, lSZ: .06,
-    lEX: -.14, lEY: 0, lEZ: 0,
-    lWX: 0, lWY: 0, lWZ: 0,
-
-    lTX: -.03, rTX: .04,
-    lKX: .02, rKX: .02,
-    lAX: 0, rAX: 0,
-
-    headX: 0, headY: .04
-  }
+  rWX: 0,
+  rWY: 0,
+  rWZ: 0
 };
 
 function lerpPose(a, b, t) {
@@ -1353,52 +1313,48 @@ function lerpPose(a, b, t) {
 }
 
 function getAttack1Pose(p) {
-  // 준비 자세로 크게 들어간 뒤, 타격 구간을 가장 빠르게 통과한다.
-  if (p < .30) {
-    const t = THREE.MathUtils.smoothstep(p / .30, 0, 1);
-    return lerpPose(attack1Poses.A, attack1Poses.B, t);
+  // 앞 절반: 천천히 들어 올림.
+  if (p < .5) {
+    const t = THREE.MathUtils.smoothstep(p / .5, 0, 1);
+    return lerpPose(attack1NeutralPose, attack1RightArmRaisedPose, t);
   }
 
-  if (p < .58) {
-    const t = THREE.MathUtils.smoothstep((p - .30) / .28, 0, 1);
-    return lerpPose(attack1Poses.B, attack1Poses.C, t);
-  }
-
-  const t = THREE.MathUtils.smoothstep((p - .58) / .42, 0, 1);
-  return lerpPose(attack1Poses.C, attack1Poses.D, t);
+  // 뒤 절반: 같은 속도감으로 천천히 내림.
+  const t = THREE.MathUtils.smoothstep((p - .5) / .5, 0, 1);
+  return lerpPose(attack1RightArmRaisedPose, attack1NeutralPose, t);
 }
 
 function applyAttack1Pose(pose, dt) {
   hipsRig.position.y = damp(hipsRig.position.y, 1.7, 12, dt);
-  hipsRig.rotation.x = dampAxisLimited(hipsRig.rotation.x, 0, 12, 5.0, dt);
-  hipsRig.rotation.y = dampAxisLimited(hipsRig.rotation.y, pose.hipY, 13, 4.8, dt);
-  hipsRig.rotation.z = dampAxisLimited(hipsRig.rotation.z, 0, 12, 5.0, dt);
+  hipsRig.rotation.x = dampAxisLimited(hipsRig.rotation.x, 0, 12, 4.0, dt);
+  hipsRig.rotation.y = dampAxisLimited(hipsRig.rotation.y, pose.hipY, 12, 4.0, dt);
+  hipsRig.rotation.z = dampAxisLimited(hipsRig.rotation.z, 0, 12, 4.0, dt);
 
-  dampRot(torsoRig, pose.torsoX, pose.torsoY, pose.torsoZ, 14, dt, 6.0);
+  dampRot(torsoRig, pose.torsoX, pose.torsoY, pose.torsoZ, 12, dt, 4.5);
 
-  dampRot(rightArmRig.shoulder, pose.rSX, pose.rSY, pose.rSZ, 16, dt, 7.0);
-  dampRot(rightArmRig.elbow, pose.rEX, pose.rEY, pose.rEZ, 17, dt, 7.4);
-  dampRot(rightArmRig.wrist, pose.rWX, pose.rWY, pose.rWZ, 18, dt, 7.8);
+  dampRot(rightArmRig.shoulder, pose.rSX, pose.rSY, pose.rSZ, 10, dt, 2.2);
+  dampRot(rightArmRig.elbow, pose.rEX, pose.rEY, pose.rEZ, 10, dt, 2.2);
+  dampRot(rightArmRig.wrist, pose.rWX, pose.rWY, pose.rWZ, 10, dt, 2.2);
 
-  dampRot(leftArmRig.shoulder, pose.lSX, pose.lSY, pose.lSZ, 14, dt, 6.2);
-  dampRot(leftArmRig.elbow, pose.lEX, pose.lEY, pose.lEZ, 15, dt, 6.5);
-  dampRot(leftArmRig.wrist, pose.lWX, pose.lWY, pose.lWZ, 16, dt, 6.8);
+  dampRot(leftArmRig.shoulder, pose.lSX, pose.lSY, pose.lSZ, 12, dt, 4.5);
+  dampRot(leftArmRig.elbow, pose.lEX, pose.lEY, pose.lEZ, 12, dt, 4.5);
+  dampRot(leftArmRig.wrist, pose.lWX, pose.lWY, pose.lWZ, 12, dt, 4.5);
 
-  dampRot(leftLegRig.thigh, pose.lTX, 0, 0, 13, dt, 5.2);
-  dampRot(rightLegRig.thigh, pose.rTX, 0, 0, 13, dt, 5.2);
-  dampRot(leftLegRig.knee, pose.lKX, 0, 0, 14, dt, 5.5);
-  dampRot(rightLegRig.knee, pose.rKX, 0, 0, 14, dt, 5.5);
-  dampRot(leftLegRig.ankle, pose.lAX, 0, 0, 14, dt, 5.5);
-  dampRot(rightLegRig.ankle, pose.rAX, 0, 0, 14, dt, 5.5);
+  dampRot(leftLegRig.thigh, pose.lTX, 0, 0, 12, dt, 4.0);
+  dampRot(rightLegRig.thigh, pose.rTX, 0, 0, 12, dt, 4.0);
+  dampRot(leftLegRig.knee, pose.lKX, 0, 0, 12, dt, 4.0);
+  dampRot(rightLegRig.knee, pose.rKX, 0, 0, 12, dt, 4.0);
+  dampRot(leftLegRig.ankle, pose.lAX, 0, 0, 12, dt, 4.0);
+  dampRot(rightLegRig.ankle, pose.rAX, 0, 0, 12, dt, 4.0);
 
-  headRig.rotation.x = dampAxisLimited(headRig.rotation.x, pose.headX, 10, 4.0, dt);
-  headRig.rotation.y = dampAxisLimited(headRig.rotation.y, pose.headY, 10, 4.0, dt);
+  headRig.rotation.x = dampAxisLimited(headRig.rotation.x, pose.headX, 10, 3.5, dt);
+  headRig.rotation.y = dampAxisLimited(headRig.rotation.y, pose.headY, 10, 3.5, dt);
 
-  // 검은 손에 고정된 기본 그립을 유지. 검끝 방향 미세조정은 큰 모션 확정 후 한다.
-  rotateQuaternionToward(swordRoot, swordRestQuaternion, 8.0, dt);
+  rotateQuaternionToward(swordRoot, swordRestQuaternion, 6.0, dt);
 
   applyHumanJointLimits();
 }
+
 
 function animateRig(dt, moving) {
   const speed = 15;
