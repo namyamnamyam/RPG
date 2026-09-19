@@ -246,15 +246,16 @@ function animateImportedPlayer(dt, moving) {
 }
 
 async function loadImportedPlayer() {
+  let model = null;
+
   try {
     const buffer = await loadPlayerTestBuffer();
     const loader = new GLTFLoader();
     const gltf = await loader.parseAsync(buffer, '');
 
-    const model = gltf.scene;
+    model = gltf.scene;
     model.updateMatrixWorld(true);
 
-    // 기존 코드 캐릭터 높이와 비슷하게 자동 스케일.
     const box = new THREE.Box3().setFromObject(model);
     const size = new THREE.Vector3();
     box.getSize(size);
@@ -262,7 +263,6 @@ async function loadImportedPlayer() {
     model.scale.setScalar(scale);
     model.updateMatrixWorld(true);
 
-    // 발바닥을 플레이어 원점 y=0에, 몸 중심을 x/z=0에 맞춘다.
     const fittedBox = new THREE.Box3().setFromObject(model);
     const center = new THREE.Vector3();
     fittedBox.getCenter(center);
@@ -273,6 +273,10 @@ async function loadImportedPlayer() {
     importedPlayerPivot.add(model);
     importedPlayerVisual = model;
 
+    // 여기까지 왔으면 "신형 외형 표시" 자체는 성공.
+    // 이후 본 매핑/애니메이션 쪽 오류 때문에 이미 뜬 GLB를 지우지 않는다.
+    setLegacyPlayerVisible(false);
+
     model.traverse(obj => {
       if (obj.isBone) {
         importedBones[obj.name] = obj;
@@ -282,6 +286,7 @@ async function loadImportedPlayer() {
         obj.castShadow = true;
         obj.receiveShadow = true;
         obj.frustumCulled = false;
+        obj.visible = true;
       }
     });
 
@@ -290,32 +295,40 @@ async function loadImportedPlayer() {
       'thigh.L','thigh.R','shin.L','shin.R'
     ];
     const missing = required.filter(name => !importedBones[name]);
-    if (missing.length) throw new Error(`missing player bones: ${missing.join(', ')}`);
 
-    importedPlayerReady = true;
-
-    // 새 외형이 완전히 로드된 뒤에 기존 코드 캐릭터/장비를 전부 숨긴다.
-    setLegacyPlayerVisible(false);
+    importedPlayerReady = missing.length === 0;
     updateEquipmentUI();
-    showToast('신형 캐릭터 · 코드 모션 ON');
-    console.info('[player-test] GLB ready', {
+
+    if (missing.length) {
+      console.warn('[player-test] GLB visible, bone mapping incomplete', missing);
+      showToast('신형 캐릭터 표시됨 · 본 매핑 일부 실패');
+    } else {
+      showToast('신형 캐릭터 · 코드 모션 ON');
+    }
+
+    console.info('[player-test] GLB visible', {
       bones: Object.keys(importedBones).length,
+      missing,
       scale,
       model
     });
   } catch (error) {
-    console.error('[player-test] load failed', error);
+    console.error('[player-test] visual load failed', error);
 
-    // 파싱 도중 실패해도 새 모델이 반쯤 남아 1+1이 되지 않게 롤백.
-    if (importedPlayerVisual) {
-      importedPlayerPivot.remove(importedPlayerVisual);
+    // GLB 파싱/추가 자체가 실패했을 때만 구형 외형으로 돌아간다.
+    // 이미 scene에 올라간 신형 모델은 어떤 후속 오류가 있어도 제거하지 않는다.
+    if (!model || !model.parent) {
       importedPlayerVisual = null;
+      importedPlayerReady = false;
+      setLegacyPlayerVisible(true);
+      updateEquipmentUI();
+      showToast('신형 캐릭터 로드 실패 · 기존 모델 유지');
+    } else {
+      importedPlayerVisual = model;
+      setLegacyPlayerVisible(false);
+      updateEquipmentUI();
+      showToast('신형 캐릭터 표시됨 · 코드 모션 점검 필요');
     }
-    importedPlayerReady = false;
-    setLegacyPlayerVisible(true);
-    updateEquipmentUI();
-
-    showToast('신형 캐릭터 로드 실패 · 기존 모델 유지');
   }
 }
 
@@ -502,18 +515,9 @@ staffRoot.rotation.z = .03;
 staffRoot.visible = false;
 
 function setLegacyPlayerVisible(visible) {
+  // 부모 그룹만 숨긴다. 자식 파츠의 visible 상태는 장비 시스템이 관리하게 둔다.
+  // 이렇게 해야 새 GLB 테스트 중 구형 외형만 사라지고, 롤백 시 장비 상태도 정상 복원된다.
   hipsRig.visible = visible;
-  hipsRig.traverse(obj => {
-    if (obj.isMesh || obj.isLine || obj.isSprite) obj.visible = visible;
-  });
-
-  // 장비 파츠는 updateEquipmentUI에서 다시 켜질 수 있으므로
-  // 신형 GLB 사용 중에는 개별 루트까지 확실하게 끈다.
-  if (!visible) {
-    swordRoot.visible = false;
-    bowRoot.visible = false;
-    staffRoot.visible = false;
-  }
 }
 
 let equippedWeapon = 'sword';
@@ -533,7 +537,8 @@ function updateEquipmentUI() {
   const bowEquipped = equippedWeapon === 'bow';
   const staffEquipped = equippedWeapon === 'staff';
 
-  const showLegacyEquipment = !importedPlayerReady && hipsRig.visible;
+  const usingImportedPlayer = !!importedPlayerVisual;
+  const showLegacyEquipment = !usingImportedPlayer && hipsRig.visible;
   swordRoot.visible = showLegacyEquipment && swordEquipped;
   bowRoot.visible = showLegacyEquipment && bowEquipped;
   staffRoot.visible = showLegacyEquipment && staffEquipped;
