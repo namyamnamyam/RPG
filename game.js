@@ -294,8 +294,9 @@ async function loadImportedPlayer() {
 
     importedPlayerReady = true;
 
-    // 새 외형이 완전히 로드된 뒤에만 기존 블록 캐릭터를 숨긴다.
-    hipsRig.visible = false;
+    // 새 외형이 완전히 로드된 뒤에 기존 코드 캐릭터/장비를 전부 숨긴다.
+    setLegacyPlayerVisible(false);
+    updateEquipmentUI();
     showToast('신형 캐릭터 · 코드 모션 ON');
     console.info('[player-test] GLB ready', {
       bones: Object.keys(importedBones).length,
@@ -304,6 +305,16 @@ async function loadImportedPlayer() {
     });
   } catch (error) {
     console.error('[player-test] load failed', error);
+
+    // 파싱 도중 실패해도 새 모델이 반쯤 남아 1+1이 되지 않게 롤백.
+    if (importedPlayerVisual) {
+      importedPlayerPivot.remove(importedPlayerVisual);
+      importedPlayerVisual = null;
+    }
+    importedPlayerReady = false;
+    setLegacyPlayerVisible(true);
+    updateEquipmentUI();
+
     showToast('신형 캐릭터 로드 실패 · 기존 모델 유지');
   }
 }
@@ -490,6 +501,21 @@ mesh(new THREE.SphereGeometry(.16, 12, 9), staffOrbMat, staffRoot, [0, -1.72, 0]
 staffRoot.rotation.z = .03;
 staffRoot.visible = false;
 
+function setLegacyPlayerVisible(visible) {
+  hipsRig.visible = visible;
+  hipsRig.traverse(obj => {
+    if (obj.isMesh || obj.isLine || obj.isSprite) obj.visible = visible;
+  });
+
+  // 장비 파츠는 updateEquipmentUI에서 다시 켜질 수 있으므로
+  // 신형 GLB 사용 중에는 개별 루트까지 확실하게 끈다.
+  if (!visible) {
+    swordRoot.visible = false;
+    bowRoot.visible = false;
+    staffRoot.visible = false;
+  }
+}
+
 let equippedWeapon = 'sword';
 let bowAttack = null;
 let bowAttackCooldown = 0;
@@ -507,9 +533,10 @@ function updateEquipmentUI() {
   const bowEquipped = equippedWeapon === 'bow';
   const staffEquipped = equippedWeapon === 'staff';
 
-  swordRoot.visible = swordEquipped;
-  bowRoot.visible = bowEquipped;
-  staffRoot.visible = staffEquipped;
+  const showLegacyEquipment = !importedPlayerReady && hipsRig.visible;
+  swordRoot.visible = showLegacyEquipment && swordEquipped;
+  bowRoot.visible = showLegacyEquipment && bowEquipped;
+  staffRoot.visible = showLegacyEquipment && staffEquipped;
 
   if (weaponSwitchBtn) {
     const names = { sword: '장비: 장검', bow: '장비: 활', staff: '장비: 지팡이' };
