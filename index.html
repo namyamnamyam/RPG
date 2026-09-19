@@ -37,6 +37,13 @@
     <button id="attack-btn" class="action-btn attack">ATK</button>
   </div>
   <div id="desktop-help">WASD 이동 · J 공격 · Q 장비전환 · 1/2/3 현재 장비 스킬 · Shift 대쉬 · Space 점프 · L 락온</div>
-  <script type="module" src="/game.js?v=bow-staff-skills-1"></script>
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js"
+      }
+    }
+  </script>
+  <script type="module" src="/game.js?v=imported-rig-walk-1"></script>
 </body>
 </html>

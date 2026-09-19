@@ -1,4 +1,5 @@
 import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js';
+import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/GLTFLoader.js';
 
 const gameEl = document.getElementById('game');
 const dashPipsEl = document.getElementById('dash-pips');
@@ -121,6 +122,191 @@ const player = new THREE.Group();
 scene.add(player);
 player.position.set(0, 0, 8);
 player.rotation.y = Math.PI;
+
+// Blender에서 만든 실제 스킨드 캐릭터 테스트.
+// 첫 검증 단계에서는 기존 전투/충돌/카메라 로직은 그대로 두고,
+// 외형만 GLB로 교체한 뒤 본을 코드에서 직접 움직인다.
+const importedPlayerPivot = new THREE.Group();
+player.add(importedPlayerPivot);
+
+let importedPlayerVisual = null;
+let importedPlayerReady = false;
+const importedBones = {};
+const importedRest = {};
+
+const PLAYER_MODEL_PARTS = [
+  '/assets/player-test/part00.b64',
+  '/assets/player-test/part01.b64',
+  '/assets/player-test/part02.b64',
+  '/assets/player-test/part03.b64',
+  '/assets/player-test/part04.b64',
+  '/assets/player-test/part05.b64',
+  '/assets/player-test/part06.b64',
+  '/assets/player-test/part07.b64',
+  '/assets/player-test/part08.b64',
+  '/assets/player-test/part09.b64',
+  '/assets/player-test/part10.b64',
+  '/assets/player-test/part11.b64',
+  '/assets/player-test/part12.b64',
+  '/assets/player-test/part13.b64'
+];
+
+async function loadPlayerTestBuffer() {
+  const parts = await Promise.all(PLAYER_MODEL_PARTS.map(async url => {
+    const response = await fetch(url, { cache: 'force-cache' });
+    if (!response.ok) throw new Error(`player asset fetch failed: ${url} ${response.status}`);
+    return (await response.text()).trim();
+  }));
+
+  const b64 = parts.join('');
+  if (b64.length !== 69876) {
+    throw new Error(`player asset length mismatch: ${b64.length}`);
+  }
+
+  const binary = atob(b64);
+  const zipped = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) zipped[i] = binary.charCodeAt(i);
+
+  if (!('DecompressionStream' in window)) {
+    throw new Error('This browser does not support gzip DecompressionStream.');
+  }
+
+  const stream = new Blob([zipped])
+    .stream()
+    .pipeThrough(new DecompressionStream('gzip'));
+  const buffer = await new Response(stream).arrayBuffer();
+
+  if (buffer.byteLength !== 104308) {
+    throw new Error(`player GLB size mismatch: ${buffer.byteLength}`);
+  }
+
+  return buffer;
+}
+
+const importedPoseEuler = new THREE.Euler();
+const importedPoseDelta = new THREE.Quaternion();
+const importedPoseTarget = new THREE.Quaternion();
+
+function poseImportedBone(name, x, y, z, dt, rate = 14) {
+  const bone = importedBones[name];
+  const rest = importedRest[name];
+  if (!bone || !rest) return;
+
+  importedPoseEuler.set(x, y, z, 'XYZ');
+  importedPoseDelta.setFromEuler(importedPoseEuler);
+  importedPoseTarget.copy(rest).multiply(importedPoseDelta);
+  bone.quaternion.slerp(importedPoseTarget, 1 - Math.exp(-rate * dt));
+}
+
+function animateImportedPlayer(dt, moving) {
+  if (!importedPlayerReady) return;
+
+  const locomotionAllowed =
+    playerAlive &&
+    !attack &&
+    !skillAction &&
+    !bowAttack &&
+    !staffAttack &&
+    dashTime <= 0;
+
+  const walk = locomotionAllowed && moving && grounded;
+  const cycle = elapsed * 8.8;
+  const swing = walk ? Math.sin(cycle) : 0;
+  const idle = locomotionAllowed && !moving
+    ? Math.sin(elapsed * 1.75) * .018
+    : 0;
+
+  const armSwing = swing * .42;
+  const legSwing = swing * .52;
+  const kneeL = walk ? Math.max(0, -swing) * .58 : 0;
+  const kneeR = walk ? Math.max(0, swing) * .58 : 0;
+
+  // Blender metarig의 rest quaternion에 작은 로컬 회전을 더한다.
+  // 애니메이션 클립 없이도 실제 스킨/본이 런타임에서 변형되는지 보는 1차 테스트.
+  poseImportedBone('upper_arm.L', armSwing, 0, 0, dt);
+  poseImportedBone('upper_arm.R', -armSwing, 0, 0, dt);
+  poseImportedBone('forearm.L', .10 + Math.max(0, -swing) * .12, 0, 0, dt);
+  poseImportedBone('forearm.R', .10 + Math.max(0, swing) * .12, 0, 0, dt);
+
+  poseImportedBone('thigh.L', -legSwing, 0, 0, dt);
+  poseImportedBone('thigh.R', legSwing, 0, 0, dt);
+  poseImportedBone('shin.L', kneeL, 0, 0, dt);
+  poseImportedBone('shin.R', kneeR, 0, 0, dt);
+
+  poseImportedBone('spine.001', idle, 0, walk ? swing * .025 : 0, dt, 10);
+  poseImportedBone('spine.002', idle * .65, 0, walk ? -swing * .018 : 0, dt, 10);
+
+  if (!locomotionAllowed) {
+    // 기존 공격/스킬 테스트 중에는 새 모델이 기괴한 걷기 포즈에 남지 않게 rest 쪽으로 복귀.
+    for (const name of [
+      'upper_arm.L','upper_arm.R','forearm.L','forearm.R',
+      'thigh.L','thigh.R','shin.L','shin.R','spine.001','spine.002'
+    ]) poseImportedBone(name, 0, 0, 0, dt, 18);
+  }
+}
+
+async function loadImportedPlayer() {
+  try {
+    const buffer = await loadPlayerTestBuffer();
+    const loader = new GLTFLoader();
+    const gltf = await loader.parseAsync(buffer, '');
+
+    const model = gltf.scene;
+    model.updateMatrixWorld(true);
+
+    // 기존 코드 캐릭터 높이와 비슷하게 자동 스케일.
+    const box = new THREE.Box3().setFromObject(model);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const scale = 3.25 / Math.max(size.y, .001);
+    model.scale.setScalar(scale);
+    model.updateMatrixWorld(true);
+
+    // 발바닥을 플레이어 원점 y=0에, 몸 중심을 x/z=0에 맞춘다.
+    const fittedBox = new THREE.Box3().setFromObject(model);
+    const center = new THREE.Vector3();
+    fittedBox.getCenter(center);
+    model.position.x -= center.x;
+    model.position.z -= center.z;
+    model.position.y -= fittedBox.min.y;
+
+    importedPlayerPivot.add(model);
+    importedPlayerVisual = model;
+
+    model.traverse(obj => {
+      if (obj.isBone) {
+        importedBones[obj.name] = obj;
+        importedRest[obj.name] = obj.quaternion.clone();
+      }
+      if (obj.isMesh || obj.isSkinnedMesh) {
+        obj.castShadow = true;
+        obj.receiveShadow = true;
+        obj.frustumCulled = false;
+      }
+    });
+
+    const required = [
+      'upper_arm.L','upper_arm.R','forearm.L','forearm.R',
+      'thigh.L','thigh.R','shin.L','shin.R'
+    ];
+    const missing = required.filter(name => !importedBones[name]);
+    if (missing.length) throw new Error(`missing player bones: ${missing.join(', ')}`);
+
+    importedPlayerReady = true;
+
+    // 새 외형이 완전히 로드된 뒤에만 기존 블록 캐릭터를 숨긴다.
+    hipsRig.visible = false;
+    showToast('신형 캐릭터 · 코드 모션 ON');
+    console.info('[player-test] GLB ready', {
+      bones: Object.keys(importedBones).length,
+      scale,
+      model
+    });
+  } catch (error) {
+    console.error('[player-test] load failed', error);
+    showToast('신형 캐릭터 로드 실패 · 기존 모델 유지');
+  }
+}
 
 const hipsRig = new THREE.Group();
 hipsRig.position.set(0, 1.7, 0);
@@ -2884,6 +3070,7 @@ function updatePlayer(dt) {
   }
 
   animateRig(dt, moving);
+  animateImportedPlayer(dt, moving);
   updateDashWind();
 
 }
@@ -3081,3 +3268,4 @@ addEventListener('resize', () => {
 });
 
 showToast('프로토타입 로드 완료');
+loadImportedPlayer();
